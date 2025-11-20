@@ -1,4 +1,5 @@
-import { User, UserRole, Post, Event, Slide, AttendanceRecord, StartupConfig, ChatMessage, Comment } from '../types';
+
+import { User, UserRole, Post, Event, Slide, AttendanceSession, AttendanceEntry, StartupConfig, ChatMessage, Comment, Badge, Notification } from '../types';
 import * as OTPAuth from 'otpauth';
 
 // STORAGE KEYS
@@ -8,9 +9,10 @@ const KEYS = {
   EVENTS: 'parivartan_events',
   SLIDES: 'parivartan_slides',
   ALL_USERS: 'parivartan_all_users',
-  ATTENDANCE: 'parivartan_attendance',
+  ATTENDANCE_SESSIONS: 'parivartan_attendance_sessions',
   STARTUP_MSG: 'parivartan_startup_msg',
-  CHAT_PREFIX: 'parivartan_chat_'
+  CHAT_PREFIX: 'parivartan_chat_',
+  NOTIFICATIONS: 'parivartan_notifications_'
 };
 
 // Mock Initial Data for robust start
@@ -182,19 +184,105 @@ export const storageService = {
     localStorage.setItem(KEYS.SLIDES, JSON.stringify(slides));
   },
 
-  // Attendance
-  getAttendance: (): AttendanceRecord[] => {
+  // --- ATTENDANCE & BADGE SYSTEM ---
+  getAttendanceSessions: (): AttendanceSession[] => {
     try {
-        const a = localStorage.getItem(KEYS.ATTENDANCE);
-        return a ? JSON.parse(a) : [];
+        const s = localStorage.getItem(KEYS.ATTENDANCE_SESSIONS);
+        return s ? JSON.parse(s) : [];
     } catch { return []; }
   },
+
+  saveAttendanceSession: (session: AttendanceSession) => {
+    const sessions = storageService.getAttendanceSessions();
+    const index = sessions.findIndex(s => s.date === session.date);
+    
+    if (index !== -1) {
+        sessions[index] = session;
+    } else {
+        sessions.push(session);
+    }
+    localStorage.setItem(KEYS.ATTENDANCE_SESSIONS, JSON.stringify(sessions));
+
+    // Recalculate Badges for the month of this session
+    const month = session.date.substring(0, 7); // YYYY-MM
+    storageService.calculateBadges(month);
+    
+    return sessions;
+  },
+
+  calculateBadges: (month: string) => {
+      const sessions = storageService.getAttendanceSessions().filter(s => s.date.startsWith(month) && s.submitted);
+      const allUsers = storageService.getAllUsers();
+      
+      if (sessions.length === 0) return;
+
+      // Count attendance
+      const presenceCount: Record<string, number> = {};
+      
+      sessions.forEach(session => {
+          session.entries.forEach(entry => {
+              if (entry.status === 'present') {
+                  presenceCount[entry.userId] = (presenceCount[entry.userId] || 0) + 1;
+              }
+          });
+      });
+
+      // Sort users by count
+      const sortedUsers = Object.entries(presenceCount)
+          .sort(([, countA], [, countB]) => countB - countA)
+          .map(([userId, count]) => ({ userId, count }));
+
+      // Award Badges
+      const updatedUsers = allUsers.map(user => {
+          // Remove existing badges for this specific month to avoid dupes
+          const otherBadges = (user.badges || []).filter(b => b.month !== month);
+          
+          const rank = sortedUsers.findIndex(u => u.userId === user.id);
+          
+          if (rank === 0 && sortedUsers[rank].count > 0) {
+              otherBadges.push({ type: 'gold', month, label: 'Top Attendee' });
+          } else if (rank === 1 && sortedUsers[rank].count > 0) {
+              otherBadges.push({ type: 'silver', month, label: '2nd Place' });
+          } else if (rank === 2 && sortedUsers[rank].count > 0) {
+              otherBadges.push({ type: 'bronze', month, label: '3rd Place' });
+          }
+
+          return { ...user, badges: otherBadges };
+      });
+
+      localStorage.setItem(KEYS.ALL_USERS, JSON.stringify(updatedUsers));
+      
+      // Sync current session if needed
+      const currentUser = storageService.getUser();
+      if (currentUser) {
+          const updatedCurrent = updatedUsers.find(u => u.id === currentUser.id);
+          if (updatedCurrent) localStorage.setItem(KEYS.USER, JSON.stringify(updatedCurrent));
+      }
+  },
+
+  // Notification System
+  getNotifications: (userId: string): Notification[] => {
+      try {
+          const n = localStorage.getItem(KEYS.NOTIFICATIONS + userId);
+          return n ? JSON.parse(n) : [];
+      } catch { return []; }
+  },
+
+  addNotification: (userId: string, notification: Omit<Notification, 'id' | 'timestamp' | 'read'>) => {
+      const notifications = storageService.getNotifications(userId);
+      const newNotif: Notification = {
+          ...notification,
+          id: Date.now().toString(),
+          timestamp: Date.now(),
+          read: false
+      };
+      localStorage.setItem(KEYS.NOTIFICATIONS + userId, JSON.stringify([newNotif, ...notifications]));
+  },
   
-  saveAttendance: (record: AttendanceRecord) => {
-    const records = storageService.getAttendance();
-    const newRecords = [record, ...records];
-    localStorage.setItem(KEYS.ATTENDANCE, JSON.stringify(newRecords));
-    return newRecords;
+  markNotificationsRead: (userId: string) => {
+      const notifications = storageService.getNotifications(userId);
+      const updated = notifications.map(n => ({ ...n, read: true }));
+      localStorage.setItem(KEYS.NOTIFICATIONS + userId, JSON.stringify(updated));
   },
 
   // Startup Config
@@ -278,7 +366,8 @@ export const storageService = {
         location: '',
         interests: [],
         social: {},
-        twoFactorEnabled: false
+        twoFactorEnabled: false,
+        notificationsEnabled: true
       };
       
       allUsers.push(user);

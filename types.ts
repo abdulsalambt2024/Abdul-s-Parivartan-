@@ -13,6 +13,12 @@ export interface SocialLinks {
   instagram?: string;
 }
 
+export interface Badge {
+  type: 'gold' | 'silver' | 'bronze';
+  month: string; // Format YYYY-MM
+  label: string;
+}
+
 export interface User {
   id: string;
   name: string;
@@ -28,6 +34,8 @@ export interface User {
   // Security
   twoFactorEnabled?: boolean;
   twoFactorSecret?: string;
+  notificationsEnabled?: boolean;
+  badges?: Badge[];
 }
 
 export interface Post {
@@ -95,12 +103,18 @@ export interface Slide {
   description: string;
 }
 
-export interface AttendanceRecord {
-  id: string;
-  date: string;
-  villageName: string;
-  attendees: string[];
-  notes?: string;
+export interface AttendanceEntry {
+    userId: string;
+    userName: string;
+    status: 'present' | 'absent';
+}
+
+export interface AttendanceSession {
+  date: string; // YYYY-MM-DD
+  villageName: string; // Optional context
+  entries: AttendanceEntry[];
+  markedBy: string;
+  submitted: boolean;
 }
 
 export interface StartupConfig {
