@@ -1,21 +1,25 @@
 
-import { User, UserRole, Post, Event, Slide, AttendanceSession, AttendanceEntry, StartupConfig, ChatMessage, Comment, Badge, Notification } from '../types';
+import { User, UserRole, Post, Event, Slide, AttendanceSession, StartupConfig, ChatMessage, Comment, Notification, Feedback, Suggestion } from '../types';
 import * as OTPAuth from 'otpauth';
+import { supabase } from './supabaseClient';
 
-// STORAGE KEYS
-const KEYS = {
-  USER: 'parivartan_user',
-  POSTS: 'parivartan_posts',
-  EVENTS: 'parivartan_events',
-  SLIDES: 'parivartan_slides',
-  ALL_USERS: 'parivartan_all_users',
-  ATTENDANCE_SESSIONS: 'parivartan_attendance_sessions',
-  STARTUP_MSG: 'parivartan_startup_msg',
-  CHAT_PREFIX: 'parivartan_chat_',
-  NOTIFICATIONS: 'parivartan_notifications_'
-};
+// Helper to map Supabase data to App Types
+const mapProfileToUser = (p: any): User => ({
+    id: p.id,
+    name: p.name || p.email.split('@')[0],
+    email: p.email,
+    role: p.role as UserRole,
+    avatar: p.avatar,
+    verified: p.verified,
+    bio: p.bio,
+    location: p.location,
+    social: p.social,
+    twoFactorEnabled: p.two_factor_enabled,
+    twoFactorSecret: p.two_factor_secret,
+    notificationPreferences: p.notification_preferences || { likes: true, comments: true, mentions: true, system: true },
+    badges: p.badges
+});
 
-// Mock Initial Data for robust start
 const INITIAL_SLIDES: Slide[] = [
   {
     id: '1',
@@ -31,297 +35,291 @@ const INITIAL_SLIDES: Slide[] = [
   }
 ];
 
-const INITIAL_POSTS: Post[] = [
-  {
-    id: '1',
-    userId: 'admin',
-    userName: 'Abdul Salam',
-    userAvatar: 'https://ui-avatars.com/api/?name=Abdul+Salam&background=random',
-    type: 'announcement',
-    content: 'Welcome to Parivartan! We are excited to launch our new platform.',
-    likes: 45,
-    comments: [],
-    timestamp: Date.now() - 100000,
-  }
-];
-
-const INITIAL_EVENTS: Event[] = [
-    {
-        id: '1',
-        title: 'Village Educational Drive',
-        date: '2024-12-10',
-        description: 'Teaching basic math and science to children in Rampur.',
-        location: 'Rampur Village',
-        image: 'https://picsum.photos/800/400?random=10'
-    }
-];
-
-// Specific Super Admins as requested
-const SUPER_ADMIN_EMAILS = [
-  'abdul.salam.bt.2024@miet.ac.in',
-  'hayatamr9608@gmail.com'
-];
-
 export const storageService = {
-  getUser: (): User | null => {
-    try {
-        const u = localStorage.getItem(KEYS.USER);
-        return u ? JSON.parse(u) : null;
-    } catch { return null; }
+  // --- AUTH & USER ---
+  getCurrentUser: async (): Promise<User | null> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+    
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+        
+    return profile ? mapProfileToUser(profile) : null;
+  },
+
+  getAllUsers: async (): Promise<User[]> => {
+    const { data } = await supabase.from('profiles').select('*');
+    return (data || []).map(mapProfileToUser);
+  },
+
+  updateUserRole: async (userId: string, newRole: UserRole) => {
+      await supabase.from('profiles').update({ role: newRole }).eq('id', userId);
+      return storageService.getAllUsers(); 
+  },
+
+  updateProfile: async (userId: string, updates: Partial<User>) => {
+      const dbUpdates: any = {};
+      if (updates.bio !== undefined) dbUpdates.bio = updates.bio;
+      if (updates.location !== undefined) dbUpdates.location = updates.location;
+      if (updates.social !== undefined) dbUpdates.social = updates.social;
+      if (updates.twoFactorEnabled !== undefined) dbUpdates.two_factor_enabled = updates.twoFactorEnabled;
+      if (updates.twoFactorSecret !== undefined) dbUpdates.two_factor_secret = updates.twoFactorSecret;
+      if (updates.notificationPreferences !== undefined) dbUpdates.notification_preferences = updates.notificationPreferences;
+
+      const { data } = await supabase.from('profiles').update(dbUpdates).eq('id', userId).select().single();
+      return data ? mapProfileToUser(data) : null;
+  },
+
+  // --- POSTS ---
+  getPosts: async (): Promise<Post[]> => {
+    const { data: posts, error } = await supabase
+        .from('posts')
+        .select(`
+            *,
+            profiles (name, avatar),
+            comments (
+                id, user_id, content, created_at,
+                profiles (name)
+            )
+        `)
+        .order('created_at', { ascending: false });
+
+    if (error || !posts) return [];
+
+    return posts.map((p: any) => {
+        let images: string[] = [];
+        if (p.image) {
+            try {
+                // Attempt to parse image column as JSON array of strings
+                const parsed = JSON.parse(p.image);
+                if (Array.isArray(parsed)) images = parsed;
+                else images = [p.image];
+            } catch (e) {
+                // Fallback for legacy single images that are plain strings
+                if (p.image) images = [p.image];
+            }
+        }
+
+        return {
+            id: p.id,
+            userId: p.user_id,
+            userName: p.profiles?.name || 'Unknown',
+            userAvatar: p.profiles?.avatar || '',
+            type: p.type,
+            content: p.content,
+            images: images, 
+            image: images[0], // Primary image for backward compat
+            likes: p.likes_count,
+            timestamp: new Date(p.created_at).getTime(),
+            comments: (p.comments || []).map((c: any) => ({
+                id: c.id,
+                userId: c.user_id,
+                userName: c.profiles?.name || 'Unknown',
+                content: c.content,
+                timestamp: new Date(c.created_at).getTime()
+            }))
+        };
+    });
   },
   
-  setUser: (user: User) => {
-    localStorage.setItem(KEYS.USER, JSON.stringify(user));
-    // Sync with "database"
-    const all = storageService.getAllUsers();
-    const index = all.findIndex(u => u.id === user.id);
-    if (index >= 0) {
-      all[index] = user;
-      localStorage.setItem(KEYS.ALL_USERS, JSON.stringify(all));
-    }
+  savePost: async (post: Partial<Post>) => {
+    // Store images as a JSON string array in the 'image' column
+    // This assumes the 'image' column is of type TEXT and can hold the payload
+    const imagePayload = post.images && post.images.length > 0 
+        ? JSON.stringify(post.images) 
+        : null;
+
+    await supabase.from('posts').insert({
+        user_id: post.userId,
+        type: post.type,
+        content: post.content,
+        image: imagePayload 
+    });
+    return storageService.getPosts();
+  },
+
+  deletePost: async (postId: string) => {
+    await supabase.from('posts').delete().eq('id', postId);
+    return storageService.getPosts();
+  },
+
+  updatePost: async (post: Post) => {
+    await supabase.from('posts').update({ content: post.content, likes_count: post.likes }).eq('id', post.id);
+    return storageService.getPosts();
+  },
+
+  addComment: async (postId: string, comment: Partial<Comment>) => {
+    await supabase.from('comments').insert({
+        post_id: postId,
+        user_id: comment.userId,
+        content: comment.content
+    });
+    return storageService.getPosts();
+  },
+
+  deleteComment: async (postId: string, commentId: string) => {
+    await supabase.from('comments').delete().eq('id', commentId);
+    return storageService.getPosts();
+  },
+
+  // --- EVENTS ---
+  getEvents: async (): Promise<Event[]> => {
+      const { data } = await supabase.from('events').select('*').order('date', { ascending: true });
+      return (data || []).map((e: any) => ({
+          id: e.id,
+          title: e.title,
+          date: e.date,
+          description: e.description,
+          location: e.location,
+          image: e.image
+      }));
   },
   
-  clearUser: () => localStorage.removeItem(KEYS.USER),
-
-  getAllUsers: (): User[] => {
-    try {
-        const u = localStorage.getItem(KEYS.ALL_USERS);
-        return u ? JSON.parse(u) : [];
-    } catch { return []; }
+  saveEvent: async (event: Event) => {
+      await supabase.from('events').insert({
+          title: event.title,
+          date: event.date,
+          description: event.description,
+          location: event.location,
+          image: event.image,
+      });
+      return storageService.getEvents();
   },
 
-  updateUserRole: (userId: string, newRole: UserRole) => {
-    const all = storageService.getAllUsers();
-    const index = all.findIndex(u => u.id === userId);
-    if (index >= 0) {
-      all[index].role = newRole;
-      localStorage.setItem(KEYS.ALL_USERS, JSON.stringify(all));
-      
-      // If editing self, update session
-      const current = storageService.getUser();
-      if (current && current.id === userId) {
-        const updatedUser = all[index];
-        localStorage.setItem(KEYS.USER, JSON.stringify(updatedUser));
-      }
-      return all[index];
-    }
-    return null;
-  },
-
-  getPosts: (): Post[] => {
-    try {
-        const p = localStorage.getItem(KEYS.POSTS);
-        return p ? JSON.parse(p) : INITIAL_POSTS;
-    } catch { return INITIAL_POSTS; }
-  },
-  
-  savePost: (post: Post) => {
-    const posts = storageService.getPosts();
-    const newPosts = [post, ...posts];
-    localStorage.setItem(KEYS.POSTS, JSON.stringify(newPosts));
-    return newPosts;
-  },
-
-  deletePost: (postId: string) => {
-    const posts = storageService.getPosts();
-    const newPosts = posts.filter(p => p.id !== postId);
-    localStorage.setItem(KEYS.POSTS, JSON.stringify(newPosts));
-    return newPosts;
-  },
-
-  updatePost: (post: Post) => {
-    const posts = storageService.getPosts();
-    const index = posts.findIndex(p => p.id === post.id);
-    if (index !== -1) {
-        posts[index] = post;
-        localStorage.setItem(KEYS.POSTS, JSON.stringify(posts));
-    }
-    return posts;
-  },
-
-  addComment: (postId: string, comment: Comment) => {
-    const posts = storageService.getPosts();
-    const index = posts.findIndex(p => p.id === postId);
-    if (index !== -1) {
-        posts[index].comments.push(comment);
-        localStorage.setItem(KEYS.POSTS, JSON.stringify(posts));
-    }
-    return posts;
-  },
-
-  deleteComment: (postId: string, commentId: string) => {
-    const posts = storageService.getPosts();
-    const index = posts.findIndex(p => p.id === postId);
-    if (index !== -1) {
-        posts[index].comments = posts[index].comments.filter(c => c.id !== commentId);
-        localStorage.setItem(KEYS.POSTS, JSON.stringify(posts));
-    }
-    return posts;
-  },
-
-  getEvents: (): Event[] => {
-    try {
-        const e = localStorage.getItem(KEYS.EVENTS);
-        return e ? JSON.parse(e) : INITIAL_EVENTS;
-    } catch { return INITIAL_EVENTS; }
-  },
-  
-  saveEvent: (event: Event) => {
-    const events = storageService.getEvents();
-    const newEvents = [...events, event];
-    localStorage.setItem(KEYS.EVENTS, JSON.stringify(newEvents));
-    return newEvents;
-  },
-
+  // --- SLIDES ---
   getSlides: (): Slide[] => {
     try {
-        const s = localStorage.getItem(KEYS.SLIDES);
+        const s = localStorage.getItem('parivartan_slides');
         return s ? JSON.parse(s) : INITIAL_SLIDES;
     } catch { return INITIAL_SLIDES; }
   },
-  
-  saveSlides: (slides: Slide[]) => {
-    localStorage.setItem(KEYS.SLIDES, JSON.stringify(slides));
+  saveSlides: (slides: Slide[]) => localStorage.setItem('parivartan_slides', JSON.stringify(slides)),
+
+  // --- ATTENDANCE ---
+  getAttendanceSessions: async (): Promise<AttendanceSession[]> => {
+      const { data } = await supabase.from('attendance_sessions').select('*');
+      return (data || []).map((s: any) => ({
+          date: s.date,
+          villageName: s.village_name,
+          entries: s.entries,
+          markedBy: s.marked_by,
+          submitted: s.submitted
+      }));
   },
 
-  // --- ATTENDANCE & BADGE SYSTEM ---
-  getAttendanceSessions: (): AttendanceSession[] => {
-    try {
-        const s = localStorage.getItem(KEYS.ATTENDANCE_SESSIONS);
-        return s ? JSON.parse(s) : [];
-    } catch { return []; }
-  },
-
-  saveAttendanceSession: (session: AttendanceSession) => {
-    const sessions = storageService.getAttendanceSessions();
-    const index = sessions.findIndex(s => s.date === session.date);
-    
-    if (index !== -1) {
-        sessions[index] = session;
-    } else {
-        sessions.push(session);
-    }
-    localStorage.setItem(KEYS.ATTENDANCE_SESSIONS, JSON.stringify(sessions));
-
-    // Recalculate Badges for the month of this session
-    const month = session.date.substring(0, 7); // YYYY-MM
-    storageService.calculateBadges(month);
-    
-    return sessions;
-  },
-
-  calculateBadges: (month: string) => {
-      const sessions = storageService.getAttendanceSessions().filter(s => s.date.startsWith(month) && s.submitted);
-      const allUsers = storageService.getAllUsers();
+  saveAttendanceSession: async (session: AttendanceSession) => {
+      const { data } = await supabase.from('attendance_sessions').select('date').eq('date', session.date).single();
       
-      if (sessions.length === 0) return;
-
-      // Count attendance
-      const presenceCount: Record<string, number> = {};
-      
-      sessions.forEach(session => {
-          session.entries.forEach(entry => {
-              if (entry.status === 'present') {
-                  presenceCount[entry.userId] = (presenceCount[entry.userId] || 0) + 1;
-              }
+      if (data) {
+          await supabase.from('attendance_sessions').update({
+              entries: session.entries,
+              submitted: session.submitted,
+              marked_by: session.markedBy
+          }).eq('date', session.date);
+      } else {
+          await supabase.from('attendance_sessions').insert({
+              date: session.date,
+              village_name: session.villageName,
+              entries: session.entries,
+              submitted: session.submitted,
+              marked_by: session.markedBy
           });
-      });
-
-      // Sort users by count
-      const sortedUsers = Object.entries(presenceCount)
-          .sort(([, countA], [, countB]) => countB - countA)
-          .map(([userId, count]) => ({ userId, count }));
-
-      // Award Badges
-      const updatedUsers = allUsers.map(user => {
-          // Remove existing badges for this specific month to avoid dupes
-          const otherBadges = (user.badges || []).filter(b => b.month !== month);
-          
-          const rank = sortedUsers.findIndex(u => u.userId === user.id);
-          
-          if (rank === 0 && sortedUsers[rank].count > 0) {
-              otherBadges.push({ type: 'gold', month, label: 'Top Attendee' });
-          } else if (rank === 1 && sortedUsers[rank].count > 0) {
-              otherBadges.push({ type: 'silver', month, label: '2nd Place' });
-          } else if (rank === 2 && sortedUsers[rank].count > 0) {
-              otherBadges.push({ type: 'bronze', month, label: '3rd Place' });
-          }
-
-          return { ...user, badges: otherBadges };
-      });
-
-      localStorage.setItem(KEYS.ALL_USERS, JSON.stringify(updatedUsers));
-      
-      // Sync current session if needed
-      const currentUser = storageService.getUser();
-      if (currentUser) {
-          const updatedCurrent = updatedUsers.find(u => u.id === currentUser.id);
-          if (updatedCurrent) localStorage.setItem(KEYS.USER, JSON.stringify(updatedCurrent));
       }
+      return storageService.getAttendanceSessions();
   },
 
-  // Notification System
-  getNotifications: (userId: string): Notification[] => {
-      try {
-          const n = localStorage.getItem(KEYS.NOTIFICATIONS + userId);
-          return n ? JSON.parse(n) : [];
-      } catch { return []; }
+  // --- NOTIFICATIONS ---
+  getNotifications: async (userId: string): Promise<Notification[]> => {
+      const { data } = await supabase.from('notifications').select('*').eq('user_id', userId).order('created_at', { ascending: false });
+      return (data || []).map((n: any) => ({
+          id: n.id,
+          userId: n.user_id,
+          type: n.type,
+          content: n.content,
+          read: n.read,
+          timestamp: new Date(n.created_at).getTime()
+      }));
   },
 
-  addNotification: (userId: string, notification: Omit<Notification, 'id' | 'timestamp' | 'read'>) => {
-      const notifications = storageService.getNotifications(userId);
-      const newNotif: Notification = {
-          ...notification,
-          id: Date.now().toString(),
-          timestamp: Date.now(),
-          read: false
-      };
-      localStorage.setItem(KEYS.NOTIFICATIONS + userId, JSON.stringify([newNotif, ...notifications]));
+  addNotification: async (userId: string, notification: any) => {
+      await supabase.from('notifications').insert({
+          user_id: userId,
+          type: notification.type,
+          content: notification.content
+      });
   },
   
-  markNotificationsRead: (userId: string) => {
-      const notifications = storageService.getNotifications(userId);
-      const updated = notifications.map(n => ({ ...n, read: true }));
-      localStorage.setItem(KEYS.NOTIFICATIONS + userId, JSON.stringify(updated));
+  markNotificationsRead: async (userId: string) => {
+      await supabase.from('notifications').update({ read: true }).eq('user_id', userId);
   },
 
-  // Startup Config
+  // --- FEEDBACK ---
+  saveFeedback: async (feedback: Feedback) => {
+      // Handle optional user_id for guest feedback
+      await supabase.from('feedback').insert({
+          user_id: feedback.userId || null,
+          rating: feedback.rating,
+          comment: feedback.comment
+      });
+  },
+
+  saveSuggestion: async (suggestion: Suggestion) => {
+      // Handle optional user_id for guest suggestions
+      await supabase.from('suggestions').insert({
+          user_id: suggestion.userId || null,
+          title: suggestion.title,
+          description: suggestion.description,
+          category: suggestion.category
+      });
+  },
+
+  // --- CONFIG ---
   getStartupConfig: (): StartupConfig => {
       try {
-          const c = localStorage.getItem(KEYS.STARTUP_MSG);
+          const c = localStorage.getItem('parivartan_startup_msg');
           return c ? JSON.parse(c) : { enabled: true, title: "Welcome to PARIVARTAN", message: "Together we can make a difference." };
-      } catch {
-          return { enabled: true, title: "Welcome to PARIVARTAN", message: "Together we can make a difference." };
-      }
+      } catch { return { enabled: true, title: "Welcome to PARIVARTAN", message: "" }; }
+  },
+  saveStartupConfig: (config: StartupConfig) => localStorage.setItem('parivartan_startup_msg', JSON.stringify(config)),
+
+  // --- CHAT ---
+  getChatMessages: async (chatId: string): Promise<ChatMessage[]> => {
+      const { data } = await supabase.from('chat_messages')
+        .select('*, profiles(name)')
+        .eq('chat_id', chatId)
+        .order('created_at', { ascending: true });
+
+      return (data || []).map((m: any) => ({
+          id: m.id,
+          senderId: m.sender_id,
+          senderName: m.profiles?.name || 'Unknown',
+          text: m.text,
+          image: m.image,
+          timestamp: new Date(m.created_at).getTime()
+      }));
   },
 
-  saveStartupConfig: (config: StartupConfig) => {
-      localStorage.setItem(KEYS.STARTUP_MSG, JSON.stringify(config));
+  saveChatMessage: async (chatId: string, message: Partial<ChatMessage>) => {
+      await supabase.from('chat_messages').insert({
+          chat_id: chatId,
+          sender_id: message.senderId,
+          text: message.text,
+          image: message.image
+      });
+      return storageService.getChatMessages(chatId);
   },
 
-  // Chat Messages
-  getChatMessages: (chatId: string): ChatMessage[] => {
-      try {
-          const m = localStorage.getItem(KEYS.CHAT_PREFIX + chatId);
-          return m ? JSON.parse(m) : [];
-      } catch { return []; }
-  },
-
-  saveChatMessage: (chatId: string, message: ChatMessage) => {
-      const msgs = storageService.getChatMessages(chatId);
-      const newMsgs = [...msgs, message];
-      localStorage.setItem(KEYS.CHAT_PREFIX + chatId, JSON.stringify(newMsgs));
-      return newMsgs;
-  },
-
-  // 2FA Helpers
+  // --- 2FA ---
   generate2FASecret: () => {
     const secret = new OTPAuth.Secret({ size: 20 });
     return secret.base32;
   },
 
   verify2FAToken: (secret: string, token: string): boolean => {
-    if (!secret) return true; // Fail-safe
+    if (!secret) return true;
     try {
         const totp = new OTPAuth.TOTP({
             issuer: 'PARIVARTAN',
@@ -331,77 +329,8 @@ export const storageService = {
             period: 30,
             secret: OTPAuth.Secret.fromBase32(secret)
         });
-        
         const delta = totp.validate({ token, window: 1 });
         return delta !== null;
-    } catch (e) {
-        console.error("2FA Error", e);
-        return false;
-    }
-  },
-  
-  // Auth logic simulation with Supabase-like behavior
-  authenticate: (email: string): { user: User, isNew: boolean } => {
-    const allUsers = storageService.getAllUsers();
-    const normalizedEmail = email.toLowerCase().trim();
-    let user = allUsers.find(u => u.email.toLowerCase() === normalizedEmail);
-    let isNew = false;
-
-    if (!user) {
-      isNew = true;
-      // Determine Role based on specific list
-      let role = UserRole.USER;
-      if (SUPER_ADMIN_EMAILS.includes(normalizedEmail)) {
-        role = UserRole.SUPER_ADMIN;
-      }
-
-      user = {
-        id: Date.now().toString(),
-        name: normalizedEmail.split('@')[0],
-        email: normalizedEmail,
-        role,
-        avatar: `https://ui-avatars.com/api/?name=${normalizedEmail}&background=random`,
-        verified: role === UserRole.SUPER_ADMIN, 
-        bio: '',
-        location: '',
-        interests: [],
-        social: {},
-        twoFactorEnabled: false,
-        notificationsEnabled: true
-      };
-      
-      allUsers.push(user);
-      localStorage.setItem(KEYS.ALL_USERS, JSON.stringify(allUsers));
-    } else {
-        // Enforce Super Admin privileges if email matches, regardless of stored role
-        if (SUPER_ADMIN_EMAILS.includes(normalizedEmail) && user.role !== UserRole.SUPER_ADMIN) {
-            user.role = UserRole.SUPER_ADMIN;
-            // Update storage
-            const idx = allUsers.findIndex(u => u.id === user?.id);
-            if (idx !== -1) {
-                allUsers[idx] = user;
-                localStorage.setItem(KEYS.ALL_USERS, JSON.stringify(allUsers));
-            }
-        }
-    }
-
-    return { user, isNew };
-  },
-
-  updateProfile: (userId: string, updates: Partial<User>) => {
-    const allUsers = storageService.getAllUsers();
-    const idx = allUsers.findIndex(u => u.id === userId);
-    if (idx !== -1) {
-      allUsers[idx] = { ...allUsers[idx], ...updates };
-      localStorage.setItem(KEYS.ALL_USERS, JSON.stringify(allUsers));
-      
-      // Update current session if it matches
-      const currentUser = storageService.getUser();
-      if (currentUser && currentUser.id === userId) {
-        localStorage.setItem(KEYS.USER, JSON.stringify(allUsers[idx]));
-      }
-      return allUsers[idx];
-    }
-    return null;
+    } catch (e) { return false; }
   }
 };

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { geminiService } from '../services/geminiService';
 import { Wand2, ImagePlus, Type, Loader2, Download, Share, LayoutTemplate, Settings2 } from 'lucide-react';
@@ -23,8 +24,11 @@ export const AIStudio: React.FC = () => {
   const [instruction, setInstruction] = useState('');
 
   useEffect(() => {
-      const u = storageService.getUser();
-      if (u) setUserRole(u.role);
+      const checkUser = async () => {
+        const u = await storageService.getCurrentUser();
+        if (u) setUserRole(u.role);
+      };
+      checkUser();
   }, []);
 
   // Access Control

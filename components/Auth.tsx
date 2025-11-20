@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { storageService } from '../services/storageService';
+import { supabase } from '../services/supabaseClient';
 import { Loader2, Lock, Mail, ShieldCheck, ArrowRight, Shield, X, Eye, EyeOff } from 'lucide-react';
 
 interface AuthProps {
@@ -12,8 +13,8 @@ export const Auth: React.FC<AuthProps> = ({ isOpen, onClose, onLogin }) => {
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [fullName, setFullName] = useState(''); // New field for Signup
   const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(false);
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState<'auth' | 'verify-email' | '2fa'>('auth');
   const [tempUser, setTempUser] = useState<any>(null);
@@ -27,38 +28,49 @@ export const Auth: React.FC<AuthProps> = ({ isOpen, onClose, onLogin }) => {
     setError('');
     setLoading(true);
 
-    // Simulate network delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
-
-    if (isSignUp) {
-        setStep('verify-email');
+    try {
+        if (isSignUp) {
+            const { error } = await supabase.auth.signUp({
+                email,
+                password,
+                options: {
+                    data: { name: fullName }
+                }
+            });
+            if (error) throw error;
+            setStep('verify-email');
+        } else {
+            const { data, error } = await supabase.auth.signInWithPassword({
+                email,
+                password
+            });
+            if (error) throw error;
+            
+            // Fetch detailed profile
+            const profile = await storageService.getCurrentUser();
+            
+            if (profile?.twoFactorEnabled) {
+                setTempUser(profile);
+                setStep('2fa');
+            } else {
+                onLogin();
+                onClose();
+            }
+        }
+    } catch (err: any) {
+        setError(err.message);
+    } finally {
         setLoading(false);
-        return;
-    }
-
-    // Sign In Flow
-    const { user, isNew } = storageService.authenticate(email);
-
-    if (user.twoFactorEnabled) {
-      setTempUser(user);
-      setStep('2fa');
-      setLoading(false);
-    } else {
-      storageService.setUser(user);
-      onLogin();
-      onClose();
     }
   };
 
   const handle2FAVerify = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    await new Promise(resolve => setTimeout(resolve, 500));
-
+    
     if (tempUser && tempUser.twoFactorSecret) {
       const isValid = storageService.verify2FAToken(tempUser.twoFactorSecret, otpToken);
       if (isValid) {
-        storageService.setUser(tempUser);
         onLogin();
         onClose();
       } else {
@@ -68,14 +80,6 @@ export const Auth: React.FC<AuthProps> = ({ isOpen, onClose, onLogin }) => {
     }
   };
 
-  const handleEmailVerifiedMock = () => {
-      // Simulate user clicking email link
-      const { user } = storageService.authenticate(email);
-      storageService.setUser(user);
-      onLogin();
-      onClose();
-  };
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4">
       <div className="bg-white border border-gray-200 p-0 rounded-2xl shadow-2xl w-full max-w-md relative overflow-hidden animate-fade-in">
@@ -83,7 +87,6 @@ export const Auth: React.FC<AuthProps> = ({ isOpen, onClose, onLogin }) => {
             <X size={24} />
         </button>
 
-        {/* Header Gradient */}
         <div className="h-2 bg-gradient-to-r from-primary to-secondary w-full" />
         
         <div className="p-8">
@@ -97,6 +100,20 @@ export const Auth: React.FC<AuthProps> = ({ isOpen, onClose, onLogin }) => {
 
             {step === 'auth' && (
             <form onSubmit={handleSubmit} className="space-y-5">
+                {isSignUp && (
+                    <div>
+                        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Full Name</label>
+                        <input
+                            type="text"
+                            required
+                            value={fullName}
+                            onChange={(e) => setFullName(e.target.value)}
+                            className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary"
+                            placeholder="John Doe"
+                        />
+                    </div>
+                )}
+
                 <div>
                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Email</label>
                 <div className="relative">
@@ -106,7 +123,7 @@ export const Auth: React.FC<AuthProps> = ({ isOpen, onClose, onLogin }) => {
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
+                    className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary transition-all"
                     placeholder="you@example.com"
                     />
                 </div>
@@ -121,7 +138,7 @@ export const Auth: React.FC<AuthProps> = ({ isOpen, onClose, onLogin }) => {
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full pl-10 pr-12 py-3 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
+                    className="w-full pl-10 pr-12 py-3 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary transition-all"
                     placeholder="••••••••"
                     />
                     <button
@@ -134,29 +151,12 @@ export const Auth: React.FC<AuthProps> = ({ isOpen, onClose, onLogin }) => {
                 </div>
                 </div>
 
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center">
-                    <input
-                      id="remember-me"
-                      name="remember-me"
-                      type="checkbox"
-                      checked={rememberMe}
-                      onChange={(e) => setRememberMe(e.target.checked)}
-                      className="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded"
-                    />
-                    <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-700">
-                      Remember me
-                    </label>
-                  </div>
-                  <a href="#" className="text-sm font-medium text-primary hover:text-blue-700">
-                    Forgot password?
-                  </a>
-                </div>
+                {error && <p className="text-red-500 text-xs text-center">{error}</p>}
 
                 <button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 text-white font-bold py-3 rounded-lg transition-all duration-300 flex items-center justify-center shadow-lg shadow-blue-500/20 transform hover:-translate-y-0.5"
+                className="w-full bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 text-white font-bold py-3 rounded-lg transition-all duration-300 flex items-center justify-center shadow-lg shadow-blue-500/20"
                 >
                 {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <span className="flex items-center gap-2">{isSignUp ? 'Create Account' : 'Sign In'} <ArrowRight size={16} /></span>}
                 </button>
@@ -186,10 +186,10 @@ export const Auth: React.FC<AuthProps> = ({ isOpen, onClose, onLogin }) => {
                         <p className="text-sm text-gray-500 mt-2">Please click the link in the email to verify your account.</p>
                     </div>
                     <button 
-                        onClick={handleEmailVerifiedMock}
-                        className="w-full py-3 border-2 border-primary text-primary font-bold rounded-lg hover:bg-blue-50 transition"
+                        onClick={() => setStep('auth')}
+                        className="text-primary text-sm font-bold hover:underline"
                     >
-                        (Simulate) Clicked Email Link
+                        Back to Login
                     </button>
                 </div>
             )}

@@ -23,9 +23,11 @@ export const SundayAttendance: React.FC<Props> = ({ currentUser }) => {
     loadData();
   }, [currentDate]);
 
-  const loadData = () => {
-      setSessions(storageService.getAttendanceSessions());
-      const allUsers = storageService.getAllUsers();
+  const loadData = async () => {
+      const sessionsData = await storageService.getAttendanceSessions();
+      setSessions(sessionsData);
+      
+      const allUsers = await storageService.getAllUsers();
       // Filter authorized users (Members, Admins, Super Admins)
       const authUsers = allUsers.filter(u => u.role !== UserRole.USER);
       setAuthorizedUsers(authUsers);
@@ -99,7 +101,7 @@ export const SundayAttendance: React.FC<Props> = ({ currentUser }) => {
       setCurrentSession({ ...currentSession, entries: updatedEntries });
   };
 
-  const handleSave = (submit: boolean = false) => {
+  const handleSave = async (submit: boolean = false) => {
       if (!currentSession) return;
       
       const toSave = {
@@ -108,8 +110,9 @@ export const SundayAttendance: React.FC<Props> = ({ currentUser }) => {
           submitted: submit ? true : currentSession.submitted // Once submitted, stays submitted unless super admin changes logic
       };
 
-      storageService.saveAttendanceSession(toSave);
-      setSessions(storageService.getAttendanceSessions()); // Reload
+      await storageService.saveAttendanceSession(toSave);
+      const updatedSessions = await storageService.getAttendanceSessions();
+      setSessions(updatedSessions);
       loadData(); // Reload badges
       if (submit) setSelectedDate(null); // Close on submit
       else alert("Draft saved");

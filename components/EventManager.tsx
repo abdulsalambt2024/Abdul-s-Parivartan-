@@ -1,19 +1,36 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Calendar, CheckSquare, Heart, Plus, Lock, UserPlus } from 'lucide-react';
 import { storageService } from '../services/storageService';
-import { User, UserRole } from '../types';
+import { User, UserRole, Event } from '../types';
 
 interface EventManagerProps {
     currentUser: User | null;
+    defaultTab?: 'events' | 'tasks' | 'donate';
 }
 
-export const EventManager: React.FC<EventManagerProps> = ({ currentUser }) => {
-  const [activeTab, setActiveTab] = useState<'events' | 'tasks' | 'donate'>('events');
-  const events = storageService.getEvents();
+export const EventManager: React.FC<EventManagerProps> = ({ currentUser, defaultTab = 'events' }) => {
+  const [activeTab, setActiveTab] = useState<'events' | 'tasks' | 'donate'>(defaultTab);
+  const [events, setEvents] = useState<Event[]>([]);
   
   // Strictly authorized: Members, Admins, Super Admins
   const isAuthorized = currentUser && currentUser.role !== UserRole.USER;
+
+  useEffect(() => {
+      const fetchEvents = async () => {
+          const data = await storageService.getEvents();
+          setEvents(data);
+      };
+      fetchEvents();
+  }, []);
+
+  useEffect(() => {
+      if (defaultTab === 'tasks' && !isAuthorized) {
+          setActiveTab('events');
+      } else {
+          setActiveTab(defaultTab);
+      }
+  }, [defaultTab, isAuthorized]);
 
   return (
     <div className="max-w-5xl mx-auto py-8 px-4">
@@ -24,13 +41,17 @@ export const EventManager: React.FC<EventManagerProps> = ({ currentUser }) => {
          >
            <Calendar size={18} /> Events
          </button>
-         {/* Only show Task Tab button if authorized, or keep it but restrict content? Prompt says "dont show task to unauthorised person" so we hide tab or content. Better UX is hide content if tab clicked or hide tab. I will hide content. */}
-         <button 
-           onClick={() => setActiveTab('tasks')}
-           className={`px-6 py-2 rounded-full flex items-center gap-2 transition ${activeTab === 'tasks' ? 'bg-green-600 text-white shadow-lg' : 'bg-white text-gray-600 shadow-sm'}`}
-         >
-           <CheckSquare size={18} /> Tasks
-         </button>
+         
+         {/* HIDE TASKS TAB FOR UNAUTHORIZED USERS */}
+         {isAuthorized && (
+            <button 
+            onClick={() => setActiveTab('tasks')}
+            className={`px-6 py-2 rounded-full flex items-center gap-2 transition ${activeTab === 'tasks' ? 'bg-green-600 text-white shadow-lg' : 'bg-white text-gray-600 shadow-sm'}`}
+            >
+            <CheckSquare size={18} /> Tasks
+            </button>
+         )}
+
          <button 
            onClick={() => setActiveTab('donate')}
            className={`px-6 py-2 rounded-full flex items-center gap-2 transition ${activeTab === 'donate' ? 'bg-pink-500 text-white shadow-lg' : 'bg-white text-gray-600 shadow-sm'}`}
@@ -62,54 +83,38 @@ export const EventManager: React.FC<EventManagerProps> = ({ currentUser }) => {
               </div>
             ))}
             
-            {/* Add Event - Restricted */}
-            {isAuthorized ? (
+            {/* Only Show Create Event if Authorized */}
+            {isAuthorized && (
                 <button className="bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl flex flex-col items-center justify-center p-6 text-gray-400 hover:bg-white hover:border-primary hover:text-primary transition cursor-pointer h-full min-h-[300px]">
                    <Plus size={48} className="mb-2" />
                    <span className="font-medium">Create New Event</span>
                    <span className="text-xs mt-2">Member Access Only</span>
                 </button>
-            ) : (
-                <div className="bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl flex flex-col items-center justify-center p-6 text-gray-400 h-full min-h-[300px]">
-                   <Lock size={48} className="mb-2 text-gray-300" />
-                   <span className="font-medium text-sm text-center">Event creation restricted to<br/>authorized members.</span>
-                </div>
             )}
          </div>
        )}
 
-       {activeTab === 'tasks' && (
+       {activeTab === 'tasks' && isAuthorized && (
          <div className="bg-white rounded-2xl shadow-md overflow-hidden animate-fade-in">
            <div className="p-6 border-b border-gray-100 flex justify-between items-center">
              <h3 className="text-lg font-bold text-gray-800">Community Tasks</h3>
-             {isAuthorized && (
-                 <button className="flex items-center gap-1 text-sm text-primary font-bold hover:underline">
-                     <Plus size={16} /> Assign Task
-                 </button>
-             )}
+             <button className="flex items-center gap-1 text-sm text-primary font-bold hover:underline">
+                 <Plus size={16} /> Assign Task
+             </button>
            </div>
            
-           {isAuthorized ? (
-               <div className="divide-y divide-gray-100">
-                 {[1, 2, 3].map(i => (
-                   <div key={i} className="p-4 flex items-center gap-4 hover:bg-gray-50">
-                     <div className={`w-2 h-2 rounded-full ${i === 1 ? 'bg-red-500' : i === 2 ? 'bg-yellow-500' : 'bg-green-500'}`} />
-                     <div className="flex-1">
-                       <h4 className="text-sm font-semibold text-gray-900">Update Community Guidelines</h4>
-                       <p className="text-xs text-gray-500">Assigned to: Admin User</p>
-                     </div>
-                     <span className="text-xs bg-gray-100 px-2 py-1 rounded">Due Tomorrow</span>
-                   </div>
-                 ))}
-               </div>
-           ) : (
-                 /* Completely hide tasks for unauthorized */
-                 <div className="p-16 flex flex-col items-center justify-center text-gray-400 bg-gray-50">
-                     <Lock size={48} className="mb-4 text-red-300 opacity-70" />
-                     <h4 className="text-lg font-bold text-gray-700">Access Denied</h4>
-                     <p className="text-sm">Task management is restricted to authorized personnel only.</p>
+           <div className="divide-y divide-gray-100">
+             {[1, 2, 3].map(i => (
+               <div key={i} className="p-4 flex items-center gap-4 hover:bg-gray-50">
+                 <div className={`w-2 h-2 rounded-full ${i === 1 ? 'bg-red-500' : i === 2 ? 'bg-yellow-500' : 'bg-green-500'}`} />
+                 <div className="flex-1">
+                   <h4 className="text-sm font-semibold text-gray-900">Update Community Guidelines</h4>
+                   <p className="text-xs text-gray-500">Assigned to: Admin User</p>
                  </div>
-           )}
+                 <span className="text-xs bg-gray-100 px-2 py-1 rounded">Due Tomorrow</span>
+               </div>
+             ))}
+           </div>
          </div>
        )}
 
@@ -120,7 +125,7 @@ export const EventManager: React.FC<EventManagerProps> = ({ currentUser }) => {
              <p className="text-gray-500 max-w-md mx-auto mb-6">
                  Your contributions help us organize village visits, educational programs, and community events.
              </p>
-             {/* Donation Campaign Management for Authorized Users */}
+             {/* Donation Campaign Management for Authorized Users ONLY */}
              {isAuthorized && (
                  <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-100 inline-block">
                      <p className="text-sm text-blue-800 font-semibold mb-2">Campaign Management</p>

@@ -9,7 +9,7 @@ interface ChatProps {
 }
 
 export const ChatInterface: React.FC<ChatProps> = ({ currentUser }) => {
-  const [activeChatId, setActiveChatId] = useState<string | null>('group-general');
+  const [activeChatId, setActiveChatId] = useState<string | null>('group-parivartan');
   const [users, setUsers] = useState<User[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
@@ -20,14 +20,20 @@ export const ChatInterface: React.FC<ChatProps> = ({ currentUser }) => {
 
   useEffect(() => {
       // Load all users excluding self
-      const all = storageService.getAllUsers().filter(u => u.id !== currentUser.id && u.role !== UserRole.USER);
-      setUsers(all);
+      const loadUsers = async () => {
+          const all = await storageService.getAllUsers();
+          setUsers(all.filter(u => u.id !== currentUser.id && u.role !== UserRole.USER));
+      };
+      loadUsers();
   }, [currentUser.id]);
 
   useEffect(() => {
       if (activeChatId) {
-          const msgs = storageService.getChatMessages(activeChatId);
-          setMessages(msgs);
+          const fetchMessages = async () => {
+            const msgs = await storageService.getChatMessages(activeChatId);
+            setMessages(msgs);
+          };
+          fetchMessages();
       }
   }, [activeChatId]);
 
@@ -45,7 +51,7 @@ export const ChatInterface: React.FC<ChatProps> = ({ currentUser }) => {
     }
   };
 
-  const handleSend = (e: React.FormEvent) => {
+  const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     if ((!inputText.trim() && !selectedChatImage) || !activeChatId) return;
 
@@ -58,7 +64,8 @@ export const ChatInterface: React.FC<ChatProps> = ({ currentUser }) => {
       timestamp: Date.now(),
     };
 
-    const updatedMsgs = storageService.saveChatMessage(activeChatId, newMessage);
+    // storageService.saveChatMessage returns Promise<ChatMessage[]>
+    const updatedMsgs = await storageService.saveChatMessage(activeChatId, newMessage);
     setMessages(updatedMsgs);
     setInputText('');
     setSelectedChatImage(null);
@@ -74,12 +81,12 @@ export const ChatInterface: React.FC<ChatProps> = ({ currentUser }) => {
   const filteredUsers = users.filter(u => u.name.toLowerCase().includes(searchQuery.toLowerCase()));
 
   // Determine info about active chat
-  let activeChatName = 'Community General';
+  let activeChatName = 'Parivartan Group';
   let activeChatAvatar = null;
   let activeChatVerified = false;
 
-  if (activeChatId === 'group-general') {
-      activeChatName = 'Community General';
+  if (activeChatId === 'group-parivartan') {
+      activeChatName = 'Parivartan Group';
   } else if (activeChatId) {
       const otherUserId = activeChatId.split('_').find(id => id !== 'dm' && id !== currentUser.id);
       const u = users.find(user => user.id === otherUserId);
@@ -115,18 +122,18 @@ export const ChatInterface: React.FC<ChatProps> = ({ currentUser }) => {
         </div>
 
         <div className="flex-1 overflow-y-auto no-scrollbar">
-          {/* General Group */}
+          {/* Parivartan Group */}
           {!searchQuery && (
               <div 
-                onClick={() => setActiveChatId('group-general')}
-                className={`p-4 flex items-center gap-3 cursor-pointer hover:bg-white transition border-b border-gray-100/50 ${activeChatId === 'group-general' ? 'bg-white shadow-sm border-l-4 border-l-primary' : ''}`}
+                onClick={() => setActiveChatId('group-parivartan')}
+                className={`p-4 flex items-center gap-3 cursor-pointer hover:bg-white transition border-b border-gray-100/50 ${activeChatId === 'group-parivartan' ? 'bg-white shadow-sm border-l-4 border-l-primary' : ''}`}
               >
                 <div className="w-12 h-12 rounded-full bg-blue-100 text-primary flex items-center justify-center">
                     <UsersIcon size={24} />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <h4 className="font-medium text-gray-900">Community General</h4>
-                  <p className="text-xs text-gray-500">Group for all members</p>
+                  <h4 className="font-medium text-gray-900">Parivartan Group</h4>
+                  <p className="text-xs text-gray-500">Official group for all members</p>
                 </div>
               </div>
           )}
@@ -191,7 +198,7 @@ export const ChatInterface: React.FC<ChatProps> = ({ currentUser }) => {
                   const isMe = msg.senderId === currentUser.id;
                   return (
                     <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                      {!isMe && activeChatId === 'group-general' && <span className="text-[10px] text-gray-500 ml-1 mb-0.5">{msg.senderName}</span>}
+                      {!isMe && activeChatId === 'group-parivartan' && <span className="text-[10px] text-gray-500 ml-1 mb-0.5">{msg.senderName}</span>}
                       <div className={`max-w-[70%] px-4 py-2 rounded-lg shadow-sm ${isMe ? 'bg-[#d9fdd3] text-gray-900 rounded-tr-none' : 'bg-white text-gray-900 rounded-tl-none'}`}>
                         {msg.image && (
                             <div className="mb-2 rounded-lg overflow-hidden border border-gray-100/50">

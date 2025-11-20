@@ -54,9 +54,14 @@ export const HeroCarousel: React.FC<HeroCarouselProps> = ({ userRole }) => {
     setIsEditing(true);
   };
 
+  // If no slides and user cannot manage, don't render anything (shifts feed up)
+  if (slides.length === 0 && !canManage) {
+      return null;
+  }
+
   return (
     <div className="relative w-full h-[500px] group overflow-hidden bg-gray-900">
-      {slides.length > 0 && (
+      {slides.length > 0 ? (
         <>
           <div 
             className="absolute inset-0 bg-cover bg-center transition-all duration-500 ease-in-out"
@@ -85,23 +90,31 @@ export const HeroCarousel: React.FC<HeroCarouselProps> = ({ userRole }) => {
           </div>
 
           {/* Navigation */}
-          <button onClick={prevSlide} className="absolute left-4 top-1/2 -translate-y-1/2 p-2 bg-white/20 backdrop-blur-sm rounded-full text-white hover:bg-white/40 transition">
-            <ChevronLeft size={24} />
-          </button>
-          <button onClick={nextSlide} className="absolute right-4 top-1/2 -translate-y-1/2 p-2 bg-white/20 backdrop-blur-sm rounded-full text-white hover:bg-white/40 transition">
-            <ChevronRight size={24} />
-          </button>
-          
-          <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex space-x-2">
-            {slides.map((_, idx) => (
-              <button
-                key={idx}
-                onClick={() => setCurrentIndex(idx)}
-                className={`w-3 h-3 rounded-full transition-all ${idx === currentIndex ? 'bg-white w-8' : 'bg-white/50'}`}
-              />
-            ))}
-          </div>
+          {slides.length > 1 && (
+            <>
+                <button onClick={prevSlide} className="absolute left-4 top-1/2 -translate-y-1/2 p-2 bg-white/20 backdrop-blur-sm rounded-full text-white hover:bg-white/40 transition">
+                    <ChevronLeft size={24} />
+                </button>
+                <button onClick={nextSlide} className="absolute right-4 top-1/2 -translate-y-1/2 p-2 bg-white/20 backdrop-blur-sm rounded-full text-white hover:bg-white/40 transition">
+                    <ChevronRight size={24} />
+                </button>
+                
+                <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex space-x-2">
+                    {slides.map((_, idx) => (
+                    <button
+                        key={idx}
+                        onClick={() => setCurrentIndex(idx)}
+                        className={`w-3 h-3 rounded-full transition-all ${idx === currentIndex ? 'bg-white w-8' : 'bg-white/50'}`}
+                    />
+                    ))}
+                </div>
+            </>
+          )}
         </>
+      ) : (
+          <div className="w-full h-full flex items-center justify-center text-white">
+              <p>No slides configured. Click '+' to add one.</p>
+          </div>
       )}
 
       {/* Admin Controls */}
@@ -110,20 +123,24 @@ export const HeroCarousel: React.FC<HeroCarouselProps> = ({ userRole }) => {
           <button onClick={addNewSlide} className="p-2 bg-primary text-white rounded-full shadow-lg hover:bg-indigo-600 transition" title="Add Slide">
             <Plus size={20} />
           </button>
-          <button 
-            onClick={() => { setEditSlide(slides[currentIndex]); setIsEditing(true); }}
-            className="p-2 bg-white text-gray-900 rounded-full shadow-lg hover:bg-gray-100 transition"
-            title="Edit Current"
-          >
-            <Edit size={20} />
-          </button>
-          <button 
-            onClick={() => handleDelete(slides[currentIndex].id)}
-            className="p-2 bg-red-500 text-white rounded-full shadow-lg hover:bg-red-600 transition"
-            title="Delete Current"
-          >
-            <Trash size={20} />
-          </button>
+          {slides.length > 0 && (
+            <>
+                <button 
+                    onClick={() => { setEditSlide(slides[currentIndex]); setIsEditing(true); }}
+                    className="p-2 bg-white text-gray-900 rounded-full shadow-lg hover:bg-gray-100 transition"
+                    title="Edit Current"
+                >
+                    <Edit size={20} />
+                </button>
+                <button 
+                    onClick={() => handleDelete(slides[currentIndex].id)}
+                    className="p-2 bg-red-500 text-white rounded-full shadow-lg hover:bg-red-600 transition"
+                    title="Delete Current"
+                >
+                    <Trash size={20} />
+                </button>
+            </>
+          )}
         </div>
       )}
 

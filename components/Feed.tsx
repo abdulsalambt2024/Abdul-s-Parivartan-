@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Post, User, UserRole, Comment } from '../types';
 import { storageService } from '../services/storageService';
@@ -15,8 +16,8 @@ export const Feed: React.FC<FeedProps> = ({ currentUser, onLoginRequest }) => {
   const [newPostContent, setNewPostContent] = useState('');
   const [newPostType, setNewPostType] = useState<Post['type']>('general');
   
-  // Image Upload
-  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  // Image Upload - Changed to array for multiple
+  const [selectedImages, setSelectedImages] = useState<string[]>([]);
 
   // Editing
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
@@ -28,17 +29,40 @@ export const Feed: React.FC<FeedProps> = ({ currentUser, onLoginRequest }) => {
   const [commentLoading, setCommentLoading] = useState(false);
 
   useEffect(() => {
-    setPosts(storageService.getPosts());
+    loadPosts();
   }, []);
 
+  const loadPosts = async () => {
+      const p = await storageService.getPosts();
+      setPosts(p);
+  };
+
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-      if (e.target.files && e.target.files[0]) {
-          const reader = new FileReader();
-          reader.onload = () => {
-              setSelectedImage(reader.result as string);
-          };
-          reader.readAsDataURL(e.target.files[0]);
+      if (e.target.files) {
+          const newImages: string[] = [];
+          // Explicitly cast to File[] or use for loop to avoid 'unknown' type issues with Array.from inference
+          const files = Array.from(e.target.files);
+          let processedCount = 0;
+
+          files.forEach((file) => {
+              const reader = new FileReader();
+              reader.onload = () => {
+                  if (typeof reader.result === 'string') {
+                      newImages.push(reader.result);
+                  }
+                  processedCount++;
+                  if (processedCount === files.length) {
+                      setSelectedImages(prev => [...prev, ...newImages]);
+                  }
+              };
+              // Cast file to Blob to satisfy TypeScript if inference is weak
+              reader.readAsDataURL(file as Blob);
+          });
       }
+  };
+
+  const removeImage = (index: number) => {
+      setSelectedImages(prev => prev.filter((_, i) => i !== index));
   };
 
   const handleCreateClick = () => {
@@ -53,59 +77,46 @@ export const Feed: React.FC<FeedProps> = ({ currentUser, onLoginRequest }) => {
       setIsCreating(true);
   }
 
-  const handleCreatePost = () => {
+  const handleCreatePost = async () => {
     if (!currentUser) return;
-    if (!newPostContent.trim() && !selectedImage) return;
+    if (!newPostContent.trim() && selectedImages.length === 0) return;
     
     if (currentUser.role === UserRole.USER) {
         alert("Unauthorized access.");
         return;
     }
 
-    const newPost: Post = {
-      id: Date.now().toString(),
+    await storageService.savePost({
       userId: currentUser.id,
       userName: currentUser.name,
       userAvatar: currentUser.avatar || '',
       type: newPostType,
       content: newPostContent,
-      image: selectedImage || undefined,
-      likes: 0,
-      comments: [],
-      timestamp: Date.now(),
-    };
+      images: selectedImages
+    });
 
-    const updatedPosts = storageService.savePost(newPost);
-    setPosts(updatedPosts);
+    await loadPosts();
     setIsCreating(false);
     setNewPostContent('');
-    setSelectedImage(null);
+    setSelectedImages([]);
   };
 
-  const handleLike = (postId: string) => {
+  const handleLike = async (postId: string) => {
     if (!currentUser) {
         onLoginRequest();
         return;
     }
-    // allow any authorized user to like
-    const updatedPosts = posts.map(p => {
-      if (p.id === postId) return { ...p, likes: p.likes + 1 };
-      return p;
-    });
-    // Note: In a real app, we'd track *who* liked to prevent double likes, but for this demo we just increment
-    setPosts(updatedPosts);
-    // Update storage would be needed here ideally if we persist likes deep in object
     const post = posts.find(p => p.id === postId);
     if (post) {
-        const updatedPost = { ...post, likes: post.likes + 1 };
-        storageService.updatePost(updatedPost);
+        await storageService.updatePost({ ...post, likes: post.likes + 1 });
+        await loadPosts();
     }
   };
 
-  const handleDelete = (postId: string) => {
+  const handleDelete = async (postId: string) => {
       if (window.confirm("Are you sure you want to delete this post? This action cannot be undone.")) {
-          const updated = storageService.deletePost(postId);
-          setPosts(updated);
+          await storageService.deletePost(postId);
+          await loadPosts();
       }
   };
 
@@ -114,22 +125,20 @@ export const Feed: React.FC<FeedProps> = ({ currentUser, onLoginRequest }) => {
       setEditContent(post.content);
   };
 
-  const saveEdit = (postId: string) => {
+  const saveEdit = async (postId: string) => {
       const post = posts.find(p => p.id === postId);
       if (post) {
-          const updated = { ...post, content: editContent };
-          storageService.updatePost(updated);
-          setPosts(posts.map(p => p.id === postId ? updated : p));
+          await storageService.updatePost({ ...post, content: editContent });
+          await loadPosts();
           setEditingPostId(null);
       }
   };
 
-  // Authorization Check Helper
   const canManagePost = (post: Post) => {
       if (!currentUser) return false;
-      if (currentUser.role === UserRole.USER) return false; // Basic users can't manage posts (edit/delete)
-      if (currentUser.role === UserRole.SUPER_ADMIN || currentUser.role === UserRole.ADMIN) return true; // Admins manage all
-      return post.userId === currentUser.id; // Members manage their own
+      if (currentUser.role === UserRole.USER) return false; 
+      if (currentUser.role === UserRole.SUPER_ADMIN || currentUser.role === UserRole.ADMIN) return true; 
+      return post.userId === currentUser.id;
   };
 
   const toggleComments = (postId: string) => {
@@ -141,7 +150,6 @@ export const Feed: React.FC<FeedProps> = ({ currentUser, onLoginRequest }) => {
       if (!currentUser || !commentText.trim()) return;
       setCommentLoading(true);
 
-      // AI Safety Check
       const validation = await geminiService.validateContent(commentText);
 
       if (!validation.isSafe) {
@@ -151,28 +159,24 @@ export const Feed: React.FC<FeedProps> = ({ currentUser, onLoginRequest }) => {
           return;
       }
 
-      const newComment: Comment = {
-          id: Date.now().toString(),
+      await storageService.addComment(postId, {
           userId: currentUser.id,
           userName: currentUser.name,
-          content: commentText,
-          timestamp: Date.now()
-      };
+          content: commentText
+      });
 
-      const updatedPosts = storageService.addComment(postId, newComment);
-      setPosts(updatedPosts);
+      await loadPosts();
       setCommentText('');
       setCommentLoading(false);
   };
 
-  const handleDeleteComment = (postId: string, commentId: string) => {
+  const handleDeleteComment = async (postId: string, commentId: string) => {
       if (window.confirm("Delete this comment?")) {
-          const updatedPosts = storageService.deleteComment(postId, commentId);
-          setPosts(updatedPosts);
+          await storageService.deleteComment(postId, commentId);
+          await loadPosts();
       }
   };
 
-  // Check if user can delete a specific comment (Admins or Author of post)
   const canDeleteComment = (post: Post, comment: Comment) => {
       if (!currentUser) return false;
       if (currentUser.role === UserRole.SUPER_ADMIN || currentUser.role === UserRole.ADMIN) return true;
@@ -183,7 +187,6 @@ export const Feed: React.FC<FeedProps> = ({ currentUser, onLoginRequest }) => {
 
   return (
     <div className="max-w-2xl mx-auto py-4 px-4">
-       {/* Create Post Trigger */}
        <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 mb-6">
          <div className="flex items-center gap-3 cursor-pointer" onClick={handleCreateClick}>
              <div className="w-10 h-10 rounded-full bg-gray-100 overflow-hidden shrink-0">
@@ -198,7 +201,6 @@ export const Feed: React.FC<FeedProps> = ({ currentUser, onLoginRequest }) => {
          </div>
        </div>
 
-       {/* Create Post Modal */}
        {isCreating && currentUser && (
          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
            <div className="bg-white rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl animate-fade-in">
@@ -206,7 +208,7 @@ export const Feed: React.FC<FeedProps> = ({ currentUser, onLoginRequest }) => {
                <h3 className="font-semibold text-gray-800">Create New Post</h3>
                <button onClick={() => setIsCreating(false)} className="text-gray-500 hover:text-gray-800"><X size={20} /></button>
              </div>
-             <div className="p-4">
+             <div className="p-4 max-h-[70vh] overflow-y-auto">
                <div className="flex gap-2 mb-4">
                  {['general', 'achievement', 'announcement'].map((t) => (
                    <button 
@@ -225,25 +227,30 @@ export const Feed: React.FC<FeedProps> = ({ currentUser, onLoginRequest }) => {
                  className="w-full h-32 resize-none outline-none text-gray-700 text-lg placeholder-gray-400"
                />
                
-               {selectedImage ? (
-                   <div className="relative mt-2">
-                       <img src={selectedImage} alt="Upload" className="w-full h-48 object-cover rounded-lg" />
-                       <button 
-                         onClick={() => setSelectedImage(null)} 
-                         className="absolute top-2 right-2 bg-black/50 text-white p-1 rounded-full hover:bg-red-500"
-                       >
-                           <X size={16} />
-                       </button>
+               {/* Image Preview Grid */}
+               {selectedImages.length > 0 && (
+                   <div className="grid grid-cols-3 gap-2 mt-2">
+                       {selectedImages.map((img, idx) => (
+                           <div key={idx} className="relative aspect-square group">
+                               <img src={img} alt={`Upload ${idx}`} className="w-full h-full object-cover rounded-lg" />
+                               <button 
+                                 onClick={() => removeImage(idx)} 
+                                 className="absolute top-1 right-1 bg-black/50 text-white p-1 rounded-full hover:bg-red-500"
+                               >
+                                   <X size={12} />
+                               </button>
+                           </div>
+                       ))}
                    </div>
-               ) : (
-                <div className="mt-2">
+               )}
+
+               <div className="mt-2">
                    <label className="h-12 w-full border-2 border-dashed border-gray-200 rounded-lg flex items-center justify-center gap-2 text-gray-400 hover:bg-gray-50 hover:border-primary hover:text-primary cursor-pointer transition">
                         <ImageIcon size={20} />
-                        <span className="text-sm font-medium">Add Photo</span>
-                        <input type="file" accept="image/*" onChange={handleImageSelect} className="hidden" />
+                        <span className="text-sm font-medium">Add Photos</span>
+                        <input type="file" accept="image/*" multiple onChange={handleImageSelect} className="hidden" />
                    </label>
-                </div>
-               )}
+               </div>
              </div>
              <div className="p-4 border-t border-gray-100 flex justify-end">
                <button 
@@ -257,7 +264,6 @@ export const Feed: React.FC<FeedProps> = ({ currentUser, onLoginRequest }) => {
          </div>
        )}
 
-       {/* Feed List */}
        <div className="space-y-6">
          {posts.map(post => (
            <div key={post.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow duration-300 group/post">
@@ -279,7 +285,6 @@ export const Feed: React.FC<FeedProps> = ({ currentUser, onLoginRequest }) => {
                     </div>
                </div>
                
-               {/* Admin/Author Controls */}
                {canManagePost(post) && (
                    <div className="flex items-center gap-2 opacity-0 group-hover/post:opacity-100 transition-opacity">
                        {editingPostId === post.id ? (
@@ -305,9 +310,17 @@ export const Feed: React.FC<FeedProps> = ({ currentUser, onLoginRequest }) => {
                 )}
              </div>
 
-             {post.image && (
-               <div className="w-full bg-gray-100">
-                 <img src={post.image} alt="Post Content" className="w-full h-auto max-h-[500px] object-contain" />
+             {/* Multi-Image Display */}
+             {post.images && post.images.length > 0 && (
+               <div className={`w-full bg-gray-100 grid gap-1 ${post.images.length === 1 ? 'grid-cols-1' : post.images.length === 2 ? 'grid-cols-2' : 'grid-cols-2'}`}>
+                 {post.images.map((img, idx) => (
+                     <img 
+                        key={idx} 
+                        src={img} 
+                        alt="Content" 
+                        className={`w-full h-auto object-cover ${post.images!.length === 1 ? 'max-h-[500px]' : 'aspect-square'} ${post.images!.length >= 3 && idx === 0 ? 'col-span-2 aspect-video' : ''}`} 
+                     />
+                 ))}
                </div>
              )}
 
@@ -328,7 +341,6 @@ export const Feed: React.FC<FeedProps> = ({ currentUser, onLoginRequest }) => {
                </button>
              </div>
 
-             {/* Comments Section */}
              {activeCommentPostId === post.id && (
                  <div className="bg-gray-50 p-4 border-t border-gray-100 animate-fade-in">
                      {post.comments.length > 0 && (
@@ -352,16 +364,12 @@ export const Feed: React.FC<FeedProps> = ({ currentUser, onLoginRequest }) => {
                                                 </button>
                                             )}
                                          </div>
-                                         <span className="text-[10px] text-gray-400 ml-2">
-                                            {new Date(comment.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                                         </span>
                                      </div>
                                  </div>
                              ))}
                          </div>
                      )}
                      
-                     {/* Add Comment Input */}
                      <div className="flex items-center gap-2 relative">
                          {currentUser ? (
                              <>
@@ -396,3 +404,4 @@ export const Feed: React.FC<FeedProps> = ({ currentUser, onLoginRequest }) => {
     </div>
   );
 };
+    

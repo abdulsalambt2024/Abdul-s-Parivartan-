@@ -19,6 +19,13 @@ export interface Badge {
   label: string;
 }
 
+export interface NotificationPreferences {
+  likes: boolean;
+  comments: boolean;
+  mentions: boolean;
+  system: boolean;
+}
+
 export interface User {
   id: string;
   name: string;
@@ -34,7 +41,7 @@ export interface User {
   // Security
   twoFactorEnabled?: boolean;
   twoFactorSecret?: string;
-  notificationsEnabled?: boolean;
+  notificationPreferences?: NotificationPreferences;
   badges?: Badge[];
 }
 
@@ -45,7 +52,8 @@ export interface Post {
   userAvatar: string;
   type: 'achievement' | 'announcement' | 'general';
   content: string;
-  image?: string;
+  images?: string[]; // Support multiple images
+  image?: string; // Backward compatibility (primary image)
   likes: number;
   comments: Comment[];
   timestamp: number;
@@ -129,5 +137,22 @@ export interface Notification {
     type: 'like' | 'comment' | 'mention' | 'system';
     content: string;
     read: boolean;
+    timestamp: number;
+}
+
+export interface Feedback {
+    id: string;
+    userId?: string; // Optional for guest feedback
+    rating: number;
+    comment: string;
+    timestamp: number;
+}
+
+export interface Suggestion {
+    id: string;
+    userId?: string; // Optional for guest suggestions
+    title: string;
+    description: string;
+    category: 'feature' | 'improvement' | 'bug';
     timestamp: number;
 }
