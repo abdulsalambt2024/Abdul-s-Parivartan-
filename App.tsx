@@ -1,7 +1,8 @@
+
 import React, { useState, useEffect } from 'react';
 import { HashRouter, Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
-import { Home, MessageSquare, Calendar, Image as ImageIcon, LogOut, Menu, X, Briefcase, Shield, QrCode, Users, UserCog } from 'lucide-react';
-import { User, UserRole } from './types';
+import { Home, MessageSquare, Calendar, Image as ImageIcon, LogOut, Menu, X, Briefcase, Shield, QrCode, Users, UserCog, Settings, Phone, Mail, ArrowRight, MessageCircle } from 'lucide-react';
+import { User, UserRole, StartupConfig } from './types';
 import { storageService } from './services/storageService';
 import { Auth } from './components/Auth';
 import { HeroCarousel } from './components/HeroCarousel';
@@ -10,7 +11,6 @@ import { ChatInterface } from './components/ChatInterface';
 import { AIStudio } from './components/AIStudio';
 import { EventManager } from './components/EventManager';
 import { Assistant } from './components/Assistant';
-import { SundayAttendance } from './components/SundayAttendance';
 import * as OTPAuth from 'otpauth';
 import * as QRCode from 'qrcode';
 
@@ -28,9 +28,48 @@ const NavLink = ({ to, icon: Icon, label }: { to: string, icon: any, label: stri
   );
 };
 
+// Startup Popup Component
+const StartupPopup = () => {
+    const [config, setConfig] = useState<StartupConfig | null>(null);
+    const [visible, setVisible] = useState(false);
+
+    useEffect(() => {
+        const c = storageService.getStartupConfig();
+        if (c && c.enabled) {
+            const seen = sessionStorage.getItem('popup_seen');
+            if (!seen) {
+                setConfig(c);
+                setVisible(true);
+                sessionStorage.setItem('popup_seen', 'true');
+            }
+        }
+    }, []);
+
+    if (!visible || !config) return null;
+
+    return (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm px-4">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden animate-fade-in-up relative">
+                <div className="bg-primary h-2 w-full"></div>
+                <div className="p-8 text-center">
+                    <h2 className="text-2xl font-bold text-gray-900 mb-4">{config.title}</h2>
+                    <p className="text-gray-600 leading-relaxed mb-8 whitespace-pre-wrap">{config.message}</p>
+                    <button 
+                        onClick={() => setVisible(false)}
+                        className="bg-primary text-white px-8 py-3 rounded-full font-bold shadow-lg hover:bg-blue-700 transition w-full"
+                    >
+                        Get Started
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 // Admin Panel Component
-const AdminPanel = () => {
+const AdminPanel = ({ currentUser }: { currentUser: User }) => {
     const [users, setUsers] = useState<User[]>([]);
+    const [startupConfig, setStartupConfig] = useState<StartupConfig>(storageService.getStartupConfig());
     
     useEffect(() => {
         setUsers(storageService.getAllUsers());
@@ -41,53 +80,103 @@ const AdminPanel = () => {
         setUsers(storageService.getAllUsers());
     };
 
+    const handleSaveConfig = () => {
+        storageService.saveStartupConfig(startupConfig);
+        alert("Startup configuration saved!");
+    };
+
     return (
         <div className="max-w-5xl mx-auto py-8 px-4">
-            <h2 className="text-2xl font-bold mb-6 text-gray-900 flex items-center gap-2">
-                <UserCog className="text-primary" /> Member Management
-            </h2>
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                <table className="w-full text-left">
-                    <thead className="bg-gray-50 text-gray-500 text-xs uppercase font-bold">
-                        <tr>
-                            <th className="p-4">User</th>
-                            <th className="p-4">Email</th>
-                            <th className="p-4">Current Role</th>
-                            <th className="p-4">Action</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                        {users.map(u => (
-                            <tr key={u.id} className="hover:bg-gray-50">
-                                <td className="p-4 flex items-center gap-3">
-                                    <img src={u.avatar} className="w-8 h-8 rounded-full" />
-                                    <span className="font-medium text-gray-900">{u.name}</span>
-                                </td>
-                                <td className="p-4 text-gray-600">{u.email}</td>
-                                <td className="p-4">
-                                    <span className={`text-xs px-2 py-1 rounded-full font-bold ${
-                                        u.role === UserRole.SUPER_ADMIN ? 'bg-purple-100 text-purple-700' :
-                                        u.role === UserRole.ADMIN ? 'bg-blue-100 text-blue-700' :
-                                        u.role === UserRole.MEMBER ? 'bg-green-100 text-green-700' :
-                                        'bg-gray-100 text-gray-600'
-                                    }`}>{u.role}</span>
-                                </td>
-                                <td className="p-4">
-                                    <select 
-                                        value={u.role} 
-                                        onChange={(e) => handleRoleChange(u.id, e.target.value as UserRole)}
-                                        className="text-sm border rounded p-1"
-                                        disabled={u.email === 'abdul.salam.bt.2024@miet.ac.in' || u.email === 'hayatamr9608@gmail.com'}
-                                    >
-                                        <option value={UserRole.USER}>User</option>
-                                        <option value={UserRole.MEMBER}>Member</option>
-                                        <option value={UserRole.ADMIN}>Admin</option>
-                                    </select>
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
+            {/* Role Management (Super Admin Only) */}
+            {currentUser.role === UserRole.SUPER_ADMIN && (
+                <div className="mb-10">
+                    <h2 className="text-2xl font-bold mb-6 text-gray-900 flex items-center gap-2">
+                        <UserCog className="text-primary" /> Member Management
+                    </h2>
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                        <table className="w-full text-left">
+                            <thead className="bg-gray-50 text-gray-500 text-xs uppercase font-bold">
+                                <tr>
+                                    <th className="p-4">User</th>
+                                    <th className="p-4">Email</th>
+                                    <th className="p-4">Current Role</th>
+                                    <th className="p-4">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                                {users.map(u => (
+                                    <tr key={u.id} className="hover:bg-gray-50">
+                                        <td className="p-4 flex items-center gap-3">
+                                            <img src={u.avatar} className="w-8 h-8 rounded-full" />
+                                            <span className="font-medium text-gray-900">{u.name}</span>
+                                        </td>
+                                        <td className="p-4 text-gray-600">{u.email}</td>
+                                        <td className="p-4">
+                                            <span className={`text-xs px-2 py-1 rounded-full font-bold ${
+                                                u.role === UserRole.SUPER_ADMIN ? 'bg-purple-100 text-purple-700' :
+                                                u.role === UserRole.ADMIN ? 'bg-blue-100 text-blue-700' :
+                                                u.role === UserRole.MEMBER ? 'bg-green-100 text-green-700' :
+                                                'bg-gray-100 text-gray-600'
+                                            }`}>{u.role}</span>
+                                        </td>
+                                        <td className="p-4">
+                                            <select 
+                                                value={u.role} 
+                                                onChange={(e) => handleRoleChange(u.id, e.target.value as UserRole)}
+                                                className="text-sm border rounded p-1"
+                                                disabled={u.email === 'abdul.salam.bt.2024@miet.ac.in' || u.email === 'hayatamr9608@gmail.com'}
+                                            >
+                                                <option value={UserRole.USER}>User</option>
+                                                <option value={UserRole.MEMBER}>Member</option>
+                                                <option value={UserRole.ADMIN}>Admin</option>
+                                                {/* Super Admins are fixed by email usually, but listed here */}
+                                                <option value={UserRole.SUPER_ADMIN} disabled>Super Admin</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
+
+            {/* Startup Message Configuration (Admins & Super Admins) */}
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                <h2 className="text-xl font-bold mb-4 text-gray-900 flex items-center gap-2">
+                    <MessageCircle className="text-primary" /> Startup Popup Message
+                </h2>
+                <div className="space-y-4 max-w-2xl">
+                    <div className="flex items-center gap-2 mb-2">
+                        <input 
+                            type="checkbox" 
+                            id="popupEnabled"
+                            checked={startupConfig.enabled}
+                            onChange={e => setStartupConfig({...startupConfig, enabled: e.target.checked})}
+                            className="w-4 h-4 text-primary"
+                        />
+                        <label htmlFor="popupEnabled" className="font-medium text-gray-700">Enable Startup Popup</label>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
+                        <input 
+                            className="w-full border p-2 rounded-lg"
+                            value={startupConfig.title}
+                            onChange={e => setStartupConfig({...startupConfig, title: e.target.value})}
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Message</label>
+                        <textarea 
+                            className="w-full border p-2 rounded-lg h-32"
+                            value={startupConfig.message}
+                            onChange={e => setStartupConfig({...startupConfig, message: e.target.value})}
+                        />
+                    </div>
+                    <button onClick={handleSaveConfig} className="bg-primary text-white px-6 py-2 rounded-lg hover:bg-blue-700">
+                        Save Configuration
+                    </button>
+                </div>
             </div>
         </div>
     );
@@ -215,7 +304,7 @@ const ProfileSettings = ({ user, onUpdate }: { user: User, onUpdate: () => void 
 
             {/* Security Settings */}
             {(user.role === UserRole.ADMIN || user.role === UserRole.SUPER_ADMIN || user.role === UserRole.MEMBER) && (
-                <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8">
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8 mb-6">
                     <h3 className="text-lg font-bold mb-4 flex items-center gap-2"><Shield size={20} /> Two-Factor Authentication</h3>
                     
                     {!user.twoFactorEnabled ? (
@@ -259,41 +348,82 @@ const ProfileSettings = ({ user, onUpdate }: { user: User, onUpdate: () => void 
                     )}
                 </div>
             )}
+            
+            {/* Help & Support Contact */}
+            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-100 rounded-xl p-6">
+                <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
+                    <Settings size={20} className="text-primary"/> Help & Support
+                </h3>
+                <div className="grid md:grid-cols-2 gap-4 text-sm">
+                    <div className="flex items-center gap-3 bg-white p-3 rounded-lg border border-blue-100 shadow-sm">
+                        <Phone size={18} className="text-primary"/>
+                        <span className="font-medium text-gray-700">9608353448</span>
+                    </div>
+                    <div className="flex items-center gap-3 bg-white p-3 rounded-lg border border-blue-100 shadow-sm">
+                         <Mail size={18} className="text-primary"/>
+                         <span className="font-medium text-gray-700 truncate">abdul.salam.bt.2024@miet.ac.in</span>
+                    </div>
+                    <div className="flex items-center gap-3 bg-white p-3 rounded-lg border border-blue-100 shadow-sm">
+                         <Mail size={18} className="text-primary"/>
+                         <span className="font-medium text-gray-700 truncate">hayatamr9608@gmail.com</span>
+                    </div>
+                </div>
+            </div>
         </div>
     );
 };
 
 // Donation Component
 const DonationBanner = () => (
-    <div className="bg-gradient-to-r from-primary to-indigo-600 text-white p-6 rounded-2xl shadow-lg mx-4 mb-8 flex flex-col md:flex-row justify-between items-center gap-6">
+    <div className="bg-gradient-to-r from-primary to-indigo-600 text-white p-6 rounded-2xl shadow-lg mb-8 flex flex-col md:flex-row justify-between items-center gap-6">
         <div>
             <h3 className="text-xl font-bold mb-2">Support PARIVARTAN</h3>
-            <p className="opacity-90 text-sm max-w-lg">Your contribution helps us organize village visits, educational programs, and community events. Every rupee counts.</p>
+            <p className="opacity-90 text-sm max-w-lg">Your contribution helps us organize village visits, educational programs, and community events.</p>
         </div>
-        <div className="bg-white p-3 rounded-xl flex items-center gap-4 shadow-lg">
-            <div className="w-16 h-16 bg-gray-100 flex items-center justify-center text-gray-400 text-xs text-center rounded border border-gray-200">
-                <QrCode className="text-gray-800" />
-            </div>
-            <div className="text-gray-900">
-                <p className="text-xs font-bold uppercase text-gray-500">Donate via UPI</p>
-                <p className="font-mono font-bold text-lg">parivartan@upi</p>
-            </div>
-        </div>
+        <button className="bg-white text-primary px-6 py-2 rounded-full font-bold shadow-lg hover:bg-blue-50 transition">
+            Donate Now
+        </button>
     </div>
 );
 
-const HomeLayout = ({ user, onLogin }: { user: User | null, onLogin: () => void }) => (
+const HomeLayout = ({ user, onLogin }: { user: User | null, onLogin: () => void }) => {
+    const location = useLocation();
+
+    // Quick Action Button Helper
+    const ActionButton = ({ to, icon: Icon, title, subtitle, color }: any) => (
+        <Link to={to} className={`flex-1 bg-white p-4 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition flex items-center gap-4 group`}>
+            <div className={`p-3 rounded-full ${color} bg-opacity-10 text-white group-hover:scale-110 transition`}>
+                <Icon size={24} className={color.replace('bg-', 'text-')} />
+            </div>
+            <div>
+                <h4 className="font-bold text-gray-900">{title}</h4>
+                <p className="text-xs text-gray-500">{subtitle}</p>
+            </div>
+            <ArrowRight size={16} className="ml-auto text-gray-300 group-hover:text-primary" />
+        </Link>
+    );
+
+    return (
     <div className="pb-20">
         <HeroCarousel userRole={user?.role || UserRole.USER} />
-        <div className="max-w-4xl mx-auto mt-8">
+        <div className="max-w-4xl mx-auto mt-8 px-4">
+            
+            {/* Quick Buttons */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8 -mt-16 relative z-10">
+                <ActionButton to="/" icon={Briefcase} title="Posts" subtitle="Latest updates" color="bg-blue-600" />
+                <ActionButton to="/events" icon={Calendar} title="Events" subtitle="Join activities" color="bg-green-600" />
+                <ActionButton to="/profile" icon={Settings} title="Settings" subtitle="Profile & Support" color="bg-purple-600" />
+            </div>
+
             <DonationBanner />
-            <h2 className="px-4 text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
+            <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
                 <Briefcase size={20} className="text-primary" /> Community Feed
             </h2>
             <Feed currentUser={user} onLoginRequest={onLogin} />
         </div>
     </div>
-);
+    );
+};
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -301,7 +431,7 @@ const App: React.FC = () => {
   const [showAuth, setShowAuth] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [, forceUpdate] = useState({}); // Hack to force re-render on profile update
+  const [, forceUpdate] = useState({}); 
 
   useEffect(() => {
     const storedUser = storageService.getUser();
@@ -329,11 +459,14 @@ const App: React.FC = () => {
       forceUpdate({});
   };
 
-  if (loading) return <div className="h-screen w-full flex items-center justify-center text-primary"><div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div></div>;
+  if (loading) return <div className="h-screen w-full flex items-center justify-center text-primary"><div className="animate-spin rounded-full h-12 w-12 border-t-2 border-primary"></div></div>;
 
   return (
     <HashRouter>
       <div className="min-h-screen bg-gray-50 flex flex-col font-sans text-slate-800">
+        {/* Global Popup */}
+        <StartupPopup />
+
         {/* Auth Modal */}
         <Auth isOpen={showAuth} onClose={() => setShowAuth(false)} onLogin={handleLogin} />
 
@@ -370,10 +503,7 @@ const App: React.FC = () => {
                         <NavLink to="/events" icon={Calendar} label="Events" />
                         
                         {user && (user.role === UserRole.SUPER_ADMIN || user.role === UserRole.ADMIN) && (
-                            <>
-                                <NavLink to="/attendance" icon={Briefcase} label="Visits" />
-                                <NavLink to="/admin" icon={Users} label="Admin" />
-                            </>
+                            <NavLink to="/admin" icon={Users} label="Admin" />
                         )}
                     </nav>
 
@@ -423,7 +553,7 @@ const App: React.FC = () => {
                                 </>
                             )}
                             {(user.role === UserRole.SUPER_ADMIN || user.role === UserRole.ADMIN) && (
-                                <Link to="/attendance" onClick={() => setMobileMenuOpen(false)} className="block py-3 px-4 hover:bg-gray-50 rounded-lg font-medium">Sunday Visits</Link>
+                                <Link to="/admin" onClick={() => setMobileMenuOpen(false)} className="block py-3 px-4 hover:bg-gray-50 rounded-lg font-medium">Admin Panel</Link>
                             )}
                             <button onClick={handleLogout} className="w-full text-left py-3 px-4 text-red-500 font-medium mt-2 hover:bg-red-50 rounded-lg">Logout</button>
                         </>
@@ -440,31 +570,22 @@ const App: React.FC = () => {
         <main className="flex-1">
             <Routes>
                 <Route path="/" element={<HomeLayout user={user} onLogin={() => setShowAuth(true)} />} />
-                <Route path="/events" element={<EventManager />} />
+                <Route path="/events" element={<EventManager currentUser={user} />} />
                 
                 {/* Protected Routes */}
                 <Route path="/profile" element={user ? <ProfileSettings user={user} onUpdate={handleProfileUpdate} /> : <Navigate to="/" />} />
                 <Route path="/chat" element={user && user.role !== UserRole.USER ? <ChatInterface currentUser={user} /> : <Navigate to="/" />} />
                 <Route path="/studio" element={user && user.role !== UserRole.USER ? <AIStudio /> : <Navigate to="/" />} />
-                <Route path="/attendance" element={user && (user.role === UserRole.SUPER_ADMIN || user.role === UserRole.ADMIN) ? <SundayAttendance currentUser={user} /> : <Navigate to="/" />} />
-                <Route path="/admin" element={user && (user.role === UserRole.SUPER_ADMIN || user.role === UserRole.ADMIN) ? <AdminPanel /> : <Navigate to="/" />} />
+                <Route path="/admin" element={user && (user.role === UserRole.SUPER_ADMIN || user.role === UserRole.ADMIN) ? <AdminPanel currentUser={user} /> : <Navigate to="/" />} />
                 
                 <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
         </main>
 
-        <footer className="bg-white border-t border-gray-200 py-10 mt-auto">
-            <div className="max-w-7xl mx-auto px-4 text-center">
-                <h3 className="text-primary font-black text-2xl mb-2 tracking-tight">PARIVARTAN</h3>
-                <p className="text-gray-500 mb-6 font-medium">Empowering Communities. Transforming Lives.</p>
-                <div className="flex justify-center gap-6 text-gray-400 mb-8">
-                    <a href="#" className="hover:text-primary transition">Twitter</a>
-                    <a href="#" className="hover:text-primary transition">Instagram</a>
-                    <a href="#" className="hover:text-primary transition">LinkedIn</a>
-                </div>
-                <div className="text-sm text-gray-400">
-                    &copy; {new Date().getFullYear()} Parivartan Foundation. All rights reserved.
-                </div>
+        {/* Minimal Footer as requested */}
+        <footer className="bg-white border-t border-gray-200 py-6 mt-auto">
+            <div className="max-w-7xl mx-auto px-4 text-center text-sm text-gray-400">
+                 &copy; {new Date().getFullYear()} PARIVARTAN. All rights reserved.
             </div>
         </footer>
         

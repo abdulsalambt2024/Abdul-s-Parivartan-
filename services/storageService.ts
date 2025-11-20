@@ -1,16 +1,19 @@
-import { User, UserRole, Post, Event, Slide, AttendanceRecord } from '../types';
+import { User, UserRole, Post, Event, Slide, AttendanceRecord, StartupConfig, ChatMessage, Comment } from '../types';
 import * as OTPAuth from 'otpauth';
 
+// STORAGE KEYS
 const KEYS = {
   USER: 'parivartan_user',
   POSTS: 'parivartan_posts',
   EVENTS: 'parivartan_events',
   SLIDES: 'parivartan_slides',
+  ALL_USERS: 'parivartan_all_users',
   ATTENDANCE: 'parivartan_attendance',
-  ALL_USERS: 'parivartan_all_users'
+  STARTUP_MSG: 'parivartan_startup_msg',
+  CHAT_PREFIX: 'parivartan_chat_'
 };
 
-// Mock Initial Data
+// Mock Initial Data for robust start
 const INITIAL_SLIDES: Slide[] = [
   {
     id: '1',
@@ -21,8 +24,8 @@ const INITIAL_SLIDES: Slide[] = [
   {
     id: '2',
     image: 'https://picsum.photos/1200/600?random=2',
-    title: 'Sunday Village Visits',
-    description: 'Join us every weekend to make a real difference on the ground.',
+    title: 'Community Impact',
+    description: 'Join us to make a real difference on the ground.',
   }
 ];
 
@@ -40,6 +43,18 @@ const INITIAL_POSTS: Post[] = [
   }
 ];
 
+const INITIAL_EVENTS: Event[] = [
+    {
+        id: '1',
+        title: 'Village Educational Drive',
+        date: '2024-12-10',
+        description: 'Teaching basic math and science to children in Rampur.',
+        location: 'Rampur Village',
+        image: 'https://picsum.photos/800/400?random=10'
+    }
+];
+
+// Specific Super Admins as requested
 const SUPER_ADMIN_EMAILS = [
   'abdul.salam.bt.2024@miet.ac.in',
   'hayatamr9608@gmail.com'
@@ -47,13 +62,15 @@ const SUPER_ADMIN_EMAILS = [
 
 export const storageService = {
   getUser: (): User | null => {
-    const u = localStorage.getItem(KEYS.USER);
-    return u ? JSON.parse(u) : null;
+    try {
+        const u = localStorage.getItem(KEYS.USER);
+        return u ? JSON.parse(u) : null;
+    } catch { return null; }
   },
   
   setUser: (user: User) => {
     localStorage.setItem(KEYS.USER, JSON.stringify(user));
-    // Update in "database" too
+    // Sync with "database"
     const all = storageService.getAllUsers();
     const index = all.findIndex(u => u.id === user.id);
     if (index >= 0) {
@@ -65,8 +82,10 @@ export const storageService = {
   clearUser: () => localStorage.removeItem(KEYS.USER),
 
   getAllUsers: (): User[] => {
-    const u = localStorage.getItem(KEYS.ALL_USERS);
-    return u ? JSON.parse(u) : [];
+    try {
+        const u = localStorage.getItem(KEYS.ALL_USERS);
+        return u ? JSON.parse(u) : [];
+    } catch { return []; }
   },
 
   updateUserRole: (userId: string, newRole: UserRole) => {
@@ -79,7 +98,8 @@ export const storageService = {
       // If editing self, update session
       const current = storageService.getUser();
       if (current && current.id === userId) {
-        localStorage.setItem(KEYS.USER, JSON.stringify(all[index]));
+        const updatedUser = all[index];
+        localStorage.setItem(KEYS.USER, JSON.stringify(updatedUser));
       }
       return all[index];
     }
@@ -87,8 +107,10 @@ export const storageService = {
   },
 
   getPosts: (): Post[] => {
-    const p = localStorage.getItem(KEYS.POSTS);
-    return p ? JSON.parse(p) : INITIAL_POSTS;
+    try {
+        const p = localStorage.getItem(KEYS.POSTS);
+        return p ? JSON.parse(p) : INITIAL_POSTS;
+    } catch { return INITIAL_POSTS; }
   },
   
   savePost: (post: Post) => {
@@ -98,9 +120,48 @@ export const storageService = {
     return newPosts;
   },
 
+  deletePost: (postId: string) => {
+    const posts = storageService.getPosts();
+    const newPosts = posts.filter(p => p.id !== postId);
+    localStorage.setItem(KEYS.POSTS, JSON.stringify(newPosts));
+    return newPosts;
+  },
+
+  updatePost: (post: Post) => {
+    const posts = storageService.getPosts();
+    const index = posts.findIndex(p => p.id === post.id);
+    if (index !== -1) {
+        posts[index] = post;
+        localStorage.setItem(KEYS.POSTS, JSON.stringify(posts));
+    }
+    return posts;
+  },
+
+  addComment: (postId: string, comment: Comment) => {
+    const posts = storageService.getPosts();
+    const index = posts.findIndex(p => p.id === postId);
+    if (index !== -1) {
+        posts[index].comments.push(comment);
+        localStorage.setItem(KEYS.POSTS, JSON.stringify(posts));
+    }
+    return posts;
+  },
+
+  deleteComment: (postId: string, commentId: string) => {
+    const posts = storageService.getPosts();
+    const index = posts.findIndex(p => p.id === postId);
+    if (index !== -1) {
+        posts[index].comments = posts[index].comments.filter(c => c.id !== commentId);
+        localStorage.setItem(KEYS.POSTS, JSON.stringify(posts));
+    }
+    return posts;
+  },
+
   getEvents: (): Event[] => {
-    const e = localStorage.getItem(KEYS.EVENTS);
-    return e ? JSON.parse(e) : [];
+    try {
+        const e = localStorage.getItem(KEYS.EVENTS);
+        return e ? JSON.parse(e) : INITIAL_EVENTS;
+    } catch { return INITIAL_EVENTS; }
   },
   
   saveEvent: (event: Event) => {
@@ -111,24 +172,58 @@ export const storageService = {
   },
 
   getSlides: (): Slide[] => {
-    const s = localStorage.getItem(KEYS.SLIDES);
-    return s ? JSON.parse(s) : INITIAL_SLIDES;
+    try {
+        const s = localStorage.getItem(KEYS.SLIDES);
+        return s ? JSON.parse(s) : INITIAL_SLIDES;
+    } catch { return INITIAL_SLIDES; }
   },
   
   saveSlides: (slides: Slide[]) => {
     localStorage.setItem(KEYS.SLIDES, JSON.stringify(slides));
   },
 
+  // Attendance
   getAttendance: (): AttendanceRecord[] => {
-    const a = localStorage.getItem(KEYS.ATTENDANCE);
-    return a ? JSON.parse(a) : [];
+    try {
+        const a = localStorage.getItem(KEYS.ATTENDANCE);
+        return a ? JSON.parse(a) : [];
+    } catch { return []; }
   },
-
+  
   saveAttendance: (record: AttendanceRecord) => {
     const records = storageService.getAttendance();
     const newRecords = [record, ...records];
     localStorage.setItem(KEYS.ATTENDANCE, JSON.stringify(newRecords));
     return newRecords;
+  },
+
+  // Startup Config
+  getStartupConfig: (): StartupConfig => {
+      try {
+          const c = localStorage.getItem(KEYS.STARTUP_MSG);
+          return c ? JSON.parse(c) : { enabled: true, title: "Welcome to PARIVARTAN", message: "Together we can make a difference." };
+      } catch {
+          return { enabled: true, title: "Welcome to PARIVARTAN", message: "Together we can make a difference." };
+      }
+  },
+
+  saveStartupConfig: (config: StartupConfig) => {
+      localStorage.setItem(KEYS.STARTUP_MSG, JSON.stringify(config));
+  },
+
+  // Chat Messages
+  getChatMessages: (chatId: string): ChatMessage[] => {
+      try {
+          const m = localStorage.getItem(KEYS.CHAT_PREFIX + chatId);
+          return m ? JSON.parse(m) : [];
+      } catch { return []; }
+  },
+
+  saveChatMessage: (chatId: string, message: ChatMessage) => {
+      const msgs = storageService.getChatMessages(chatId);
+      const newMsgs = [...msgs, message];
+      localStorage.setItem(KEYS.CHAT_PREFIX + chatId, JSON.stringify(newMsgs));
+      return newMsgs;
   },
 
   // 2FA Helpers
@@ -139,40 +234,46 @@ export const storageService = {
 
   verify2FAToken: (secret: string, token: string): boolean => {
     if (!secret) return true; // Fail-safe
-    const totp = new OTPAuth.TOTP({
-      issuer: 'PARIVARTAN',
-      label: 'ParivartanUser',
-      algorithm: 'SHA1',
-      digits: 6,
-      period: 30,
-      secret: OTPAuth.Secret.fromBase32(secret)
-    });
-    
-    const delta = totp.validate({ token, window: 1 });
-    return delta !== null;
+    try {
+        const totp = new OTPAuth.TOTP({
+            issuer: 'PARIVARTAN',
+            label: 'ParivartanUser',
+            algorithm: 'SHA1',
+            digits: 6,
+            period: 30,
+            secret: OTPAuth.Secret.fromBase32(secret)
+        });
+        
+        const delta = totp.validate({ token, window: 1 });
+        return delta !== null;
+    } catch (e) {
+        console.error("2FA Error", e);
+        return false;
+    }
   },
   
-  // Auth logic simulation
+  // Auth logic simulation with Supabase-like behavior
   authenticate: (email: string): { user: User, isNew: boolean } => {
     const allUsers = storageService.getAllUsers();
-    let user = allUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
+    const normalizedEmail = email.toLowerCase().trim();
+    let user = allUsers.find(u => u.email.toLowerCase() === normalizedEmail);
     let isNew = false;
 
     if (!user) {
       isNew = true;
-      // Determine Role
+      // Determine Role based on specific list
       let role = UserRole.USER;
-      if (SUPER_ADMIN_EMAILS.includes(email.toLowerCase())) {
+      if (SUPER_ADMIN_EMAILS.includes(normalizedEmail)) {
         role = UserRole.SUPER_ADMIN;
       }
 
       user = {
         id: Date.now().toString(),
-        name: email.split('@')[0],
-        email,
+        name: normalizedEmail.split('@')[0],
+        email: normalizedEmail,
         role,
-        avatar: `https://ui-avatars.com/api/?name=${email}&background=random`,
-        verified: role === UserRole.SUPER_ADMIN,
+        avatar: `https://ui-avatars.com/api/?name=${normalizedEmail}&background=random`,
+        verified: role === UserRole.SUPER_ADMIN, 
         bio: '',
         location: '',
         interests: [],
@@ -183,12 +284,15 @@ export const storageService = {
       allUsers.push(user);
       localStorage.setItem(KEYS.ALL_USERS, JSON.stringify(allUsers));
     } else {
-        // Ensure Super Admins always have their role
-        if (SUPER_ADMIN_EMAILS.includes(email.toLowerCase()) && user.role !== UserRole.SUPER_ADMIN) {
+        // Enforce Super Admin privileges if email matches, regardless of stored role
+        if (SUPER_ADMIN_EMAILS.includes(normalizedEmail) && user.role !== UserRole.SUPER_ADMIN) {
             user.role = UserRole.SUPER_ADMIN;
+            // Update storage
             const idx = allUsers.findIndex(u => u.id === user?.id);
-            if (idx !== -1) allUsers[idx] = user;
-            localStorage.setItem(KEYS.ALL_USERS, JSON.stringify(allUsers));
+            if (idx !== -1) {
+                allUsers[idx] = user;
+                localStorage.setItem(KEYS.ALL_USERS, JSON.stringify(allUsers));
+            }
         }
     }
 

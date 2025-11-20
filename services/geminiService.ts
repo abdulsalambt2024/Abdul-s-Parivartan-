@@ -111,5 +111,26 @@ export const geminiService = {
       console.error("Chat error:", error);
       return "Sorry, I am having trouble connecting to the AI service right now.";
     }
+  },
+
+  validateContent: async (text: string): Promise<{isSafe: boolean, reason?: string}> => {
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: `Analyze the following comment for toxicity, hate speech, or inappropriate content. 
+            Comment: "${text}"
+            Respond with JSON only: {"isSafe": boolean, "reason": string (optional, keep it brief)}`,
+            config: {
+                responseMimeType: 'application/json'
+            }
+        });
+        
+        const result = JSON.parse(response.text || '{}');
+        return { isSafe: result.isSafe ?? true, reason: result.reason };
+    } catch (error) {
+        console.error("Safety check failed", error);
+        // Fail open but log error
+        return { isSafe: true };
+    }
   }
 };

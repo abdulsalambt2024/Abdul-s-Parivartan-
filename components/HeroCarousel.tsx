@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Slide, UserRole } from '../types';
 import { storageService } from '../services/storageService';
@@ -12,6 +13,8 @@ export const HeroCarousel: React.FC<HeroCarouselProps> = ({ userRole }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isEditing, setIsEditing] = useState(false);
   const [editSlide, setEditSlide] = useState<Slide | null>(null);
+
+  const canManage = userRole === UserRole.SUPER_ADMIN || userRole === UserRole.ADMIN;
 
   useEffect(() => {
     setSlides(storageService.getSlides());
@@ -102,7 +105,7 @@ export const HeroCarousel: React.FC<HeroCarouselProps> = ({ userRole }) => {
       )}
 
       {/* Admin Controls */}
-      {userRole === UserRole.ADMIN && (
+      {canManage && (
         <div className="absolute top-4 right-4 flex space-x-2">
           <button onClick={addNewSlide} className="p-2 bg-primary text-white rounded-full shadow-lg hover:bg-indigo-600 transition" title="Add Slide">
             <Plus size={20} />

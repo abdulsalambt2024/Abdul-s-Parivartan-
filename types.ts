@@ -1,3 +1,4 @@
+
 export enum UserRole {
   SUPER_ADMIN = 'SUPER_ADMIN',
   ADMIN = 'ADMIN',
@@ -53,7 +54,9 @@ export interface Comment {
 export interface ChatMessage {
   id: string;
   senderId: string;
+  senderName?: string; // For group chat
   text: string;
+  image?: string; // Added for image sharing
   timestamp: number;
   isSystem?: boolean;
 }
@@ -65,6 +68,7 @@ export interface ChatContact {
   lastMessage: string;
   unreadCount: number;
   verified: boolean;
+  isGroup?: boolean;
 }
 
 export interface Event {
@@ -95,6 +99,21 @@ export interface AttendanceRecord {
   id: string;
   date: string;
   villageName: string;
-  attendees: string[]; // List of names
-  notes: string;
+  attendees: string[];
+  notes?: string;
+}
+
+export interface StartupConfig {
+  enabled: boolean;
+  title: string;
+  message: string;
+}
+
+export interface Notification {
+    id: string;
+    userId: string;
+    type: 'like' | 'comment' | 'mention' | 'system';
+    content: string;
+    read: boolean;
+    timestamp: number;
 }

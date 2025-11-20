@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { storageService } from '../services/storageService';
-import { Loader2, Lock, Mail, ShieldCheck, ArrowRight, Shield, X } from 'lucide-react';
+import { Loader2, Lock, Mail, ShieldCheck, ArrowRight, Shield, X, Eye, EyeOff } from 'lucide-react';
 
 interface AuthProps {
   isOpen: boolean;
@@ -12,6 +12,8 @@ export const Auth: React.FC<AuthProps> = ({ isOpen, onClose, onLogin }) => {
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState<'auth' | 'verify-email' | '2fa'>('auth');
   const [tempUser, setTempUser] = useState<any>(null);
@@ -75,7 +77,7 @@ export const Auth: React.FC<AuthProps> = ({ isOpen, onClose, onLogin }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4">
       <div className="bg-white border border-gray-200 p-0 rounded-2xl shadow-2xl w-full max-w-md relative overflow-hidden animate-fade-in">
         <button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 z-10">
             <X size={24} />
@@ -115,20 +117,46 @@ export const Auth: React.FC<AuthProps> = ({ isOpen, onClose, onLogin }) => {
                 <div className="relative">
                     <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
                     <input
-                    type="password"
+                    type={showPassword ? "text" : "password"}
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
+                    className="w-full pl-10 pr-12 py-3 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
                     placeholder="••••••••"
                     />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 focus:outline-none"
+                    >
+                      {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                    </button>
                 </div>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center">
+                    <input
+                      id="remember-me"
+                      name="remember-me"
+                      type="checkbox"
+                      checked={rememberMe}
+                      onChange={(e) => setRememberMe(e.target.checked)}
+                      className="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded"
+                    />
+                    <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-700">
+                      Remember me
+                    </label>
+                  </div>
+                  <a href="#" className="text-sm font-medium text-primary hover:text-blue-700">
+                    Forgot password?
+                  </a>
                 </div>
 
                 <button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-primary hover:bg-blue-700 text-white font-bold py-3 rounded-lg transition-all duration-300 flex items-center justify-center shadow-lg shadow-blue-500/20"
+                className="w-full bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 text-white font-bold py-3 rounded-lg transition-all duration-300 flex items-center justify-center shadow-lg shadow-blue-500/20 transform hover:-translate-y-0.5"
                 >
                 {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <span className="flex items-center gap-2">{isSignUp ? 'Create Account' : 'Sign In'} <ArrowRight size={16} /></span>}
                 </button>
@@ -192,7 +220,7 @@ export const Auth: React.FC<AuthProps> = ({ isOpen, onClose, onLogin }) => {
                 <button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-primary hover:bg-blue-700 text-white font-bold py-3 rounded-lg transition-all shadow-lg"
+                className="w-full bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 text-white font-bold py-3 rounded-lg transition-all shadow-lg"
                 >
                 {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Verify'}
                 </button>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { storageService } from '../services/storageService';
 import { AttendanceRecord, UserRole, User } from '../types';
-import { Calendar, UserCheck, Plus, MapPin } from 'lucide-react';
+import { Calendar, UserCheck, Plus, MapPin, ShieldAlert } from 'lucide-react';
 
 interface Props {
   currentUser: User;
@@ -21,8 +21,19 @@ export const SundayAttendance: React.FC<Props> = ({ currentUser }) => {
     setRecords(storageService.getAttendance());
   }, []);
 
+  // Strict authorized check (Admins, Super Admins, Members allowed)
   if (currentUser.role === UserRole.USER) {
-    return <div className="p-8 text-center text-gray-500">Access Restricted. Authorized personnel only.</div>;
+    return (
+        <div className="flex flex-col items-center justify-center min-h-[50vh] text-center p-8">
+            <div className="bg-red-50 p-4 rounded-full mb-4">
+                <ShieldAlert size={48} className="text-red-500" />
+            </div>
+            <h2 className="text-xl font-bold text-gray-900">Access Restricted</h2>
+            <p className="text-gray-500 mt-2 max-w-md">
+                Sunday Visit Attendance is restricted to authorized personnel (Members, Admins). Please contact an administrator if you believe this is an error.
+            </p>
+        </div>
+    );
   }
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -52,7 +63,7 @@ export const SundayAttendance: React.FC<Props> = ({ currentUser }) => {
         </div>
         <button 
           onClick={() => setIsAdding(true)}
-          className="bg-primary text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-700 transition"
+          className="bg-primary text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-700 transition shadow-lg"
         >
           <Plus size={18} /> Log Visit
         </button>
@@ -68,7 +79,7 @@ export const SundayAttendance: React.FC<Props> = ({ currentUser }) => {
                 <input 
                   type="date" 
                   required
-                  className="w-full border p-2 rounded-lg"
+                  className="w-full border p-2 rounded-lg focus:ring-2 focus:ring-primary outline-none"
                   value={newRecord.date}
                   onChange={e => setNewRecord({...newRecord, date: e.target.value})}
                 />
@@ -79,7 +90,7 @@ export const SundayAttendance: React.FC<Props> = ({ currentUser }) => {
                   type="text" 
                   required
                   placeholder="e.g. Rampur"
-                  className="w-full border p-2 rounded-lg"
+                  className="w-full border p-2 rounded-lg focus:ring-2 focus:ring-primary outline-none"
                   value={newRecord.villageName}
                   onChange={e => setNewRecord({...newRecord, villageName: e.target.value})}
                 />
@@ -88,7 +99,7 @@ export const SundayAttendance: React.FC<Props> = ({ currentUser }) => {
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Attendees (Comma separated)</label>
               <textarea 
-                className="w-full border p-2 rounded-lg"
+                className="w-full border p-2 rounded-lg focus:ring-2 focus:ring-primary outline-none"
                 placeholder="John Doe, Jane Smith, ..."
                 value={newRecord.attendees}
                 onChange={e => setNewRecord({...newRecord, attendees: e.target.value})}
@@ -97,7 +108,7 @@ export const SundayAttendance: React.FC<Props> = ({ currentUser }) => {
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Notes / Outcomes</label>
               <textarea 
-                className="w-full border p-2 rounded-lg"
+                className="w-full border p-2 rounded-lg focus:ring-2 focus:ring-primary outline-none"
                 placeholder="Brief summary of activities..."
                 value={newRecord.notes}
                 onChange={e => setNewRecord({...newRecord, notes: e.target.value})}
