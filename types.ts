@@ -1,0 +1,100 @@
+export enum UserRole {
+  SUPER_ADMIN = 'SUPER_ADMIN',
+  ADMIN = 'ADMIN',
+  MEMBER = 'MEMBER',
+  USER = 'USER'
+}
+
+export interface SocialLinks {
+  twitter?: string;
+  linkedin?: string;
+  github?: string;
+  instagram?: string;
+}
+
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+  avatar?: string;
+  verified?: boolean;
+  // Profile additions
+  bio?: string;
+  location?: string;
+  interests?: string[];
+  social?: SocialLinks;
+  // Security
+  twoFactorEnabled?: boolean;
+  twoFactorSecret?: string;
+}
+
+export interface Post {
+  id: string;
+  userId: string;
+  userName: string;
+  userAvatar: string;
+  type: 'achievement' | 'announcement' | 'general';
+  content: string;
+  image?: string;
+  likes: number;
+  comments: Comment[];
+  timestamp: number;
+}
+
+export interface Comment {
+  id: string;
+  userId: string;
+  userName: string;
+  content: string;
+  timestamp: number;
+}
+
+export interface ChatMessage {
+  id: string;
+  senderId: string;
+  text: string;
+  timestamp: number;
+  isSystem?: boolean;
+}
+
+export interface ChatContact {
+  id: string;
+  name: string;
+  avatar: string;
+  lastMessage: string;
+  unreadCount: number;
+  verified: boolean;
+}
+
+export interface Event {
+  id: string;
+  title: string;
+  date: string;
+  description: string;
+  location: string;
+  image?: string;
+}
+
+export interface Task {
+  id: string;
+  title: string;
+  assignedTo: string;
+  status: 'pending' | 'in-progress' | 'completed';
+  dueDate: string;
+}
+
+export interface Slide {
+  id: string;
+  image: string;
+  title: string;
+  description: string;
+}
+
+export interface AttendanceRecord {
+  id: string;
+  date: string;
+  villageName: string;
+  attendees: string[]; // List of names
+  notes: string;
+}
